@@ -1,0 +1,123 @@
+<?php
+
+/*
+ *	classe XTABLE
+ *	-------------
+ *	Cette classe est destinée à aider à la construction de
+ *	tables HTML.
+ *
+ */
+
+class xtable {
+	var $bgcolor;
+	var $cellspacing;
+	var $cellpadding;
+	var $align;
+	var $row;
+	var $width;
+
+	function xtable() {
+		$this->align = "center";
+		$this->bgcolor = "";
+		$this->cellspacing = 0;
+		$this->cellpadding = 2;
+		$this->row = 0;
+		$this->thcolor = "#e0ffe0";
+		$this->bgcolor0 = "#f0f0f0";
+		$this->bgcolor1 = "#e0e0e0";
+		$this->colonnes = array();
+		$this->texte_zero = "Aucune ligne ne correspond à la sélection";
+		$this->class = "xtable";
+	}
+
+	function init() {
+		if ($this->bgcolor) $a["BGCOLOR"] = $this->bgcolor;
+		if ($this->align) $a["ALIGN"] = $this->align;
+		if ($this->cellspacing) $a["CELLSPACING"] = $this->cellspacing;
+		if ($this->cellpadding) $a["CELLPADDING"] = $this->cellpadding;
+		if ($this->width) $a[ "WIDTH" ] = $this->width;
+		$a[ "CLASS" ] = $this->class;
+		return "\n" . tag( "TABLE", $a ) . "\n";
+				
+	}
+
+	function tr_title() {
+		$this->row = 0;
+		return "  " . tag( "tr", array( "BGCOLOR" => $this->thcolor ));
+	}
+
+	function tr() {
+		$this->row++;
+		$color = ($this->row % 2 == 0 ? $this->bgcolor0 : $this->bgcolor1 );
+		return "  </tr>\n  " . tag( "tr", array( "BGCOLOR" => $color ));
+	}
+
+	function thead( $nomcol, $width = 0 ) {
+		$this->colonnes[] = $nomcol;
+		if( $width > 0) $arr = array( "width" => $width );
+		if( $this->class ) $arr[ "CLASS" ] = $this->class;
+		$str = tag( "th", $arr ) 
+				. htmlspecialchars( $nomcol )
+				. "</th>";
+		return $str;
+	}
+
+
+	function tcell2( $data, $href = "", $info = "" ) {
+		$arr = array();
+		$str = $data;
+
+		if ($href) {
+			$hrefs = explode( "|", $href );
+			$str = ref( $hrefs[0], $hrefs[1] ) . $str . "</a>";
+		}
+
+		$infos = explode( ";", $info );
+		while( list( $dummy, $info ) = each( $infos )){
+			$info = trim( $info );
+			if( !strcasecmp( $info, "right" )) $arr[ "ALIGN" ] = "right";
+			else if( !strcasecmp( $info, "left" )) $arr[ "ALIGN" ] = "left";
+			else if( !strcasecmp( $info, "center" )) $arr[ "ALIGN" ] = "center";
+			else if( !strcasecmp( $info, "nowrap" )) $arr[ "NOWRAP" ] = "";
+			else if( !strcasecmp( $info, "strong" )){
+				$str = "<strong>" . $str . "</strong>";
+			}
+			else if( substr( $info, 0, 1 ) == '#' ){
+				$arr[ "BGCOLOR" ] = $info;
+			}
+		}
+		if( $this->class ) $arr[ "CLASS" ] = $this->class;
+		return tag( "td", $arr ) . $str . "</td>\n" ;
+	}
+
+	function tdnumber( $data, $href = false ){
+		return $this->tcell2( htmlspecialchars( $data ), $href, "right" );
+	}
+
+	function td( $data ){
+		return $this->tcell2( $data );
+	}
+
+
+	function tcell( $data, $href = "", $info = "" ) {
+		return $this->tcell2( htmlspecialchars( $data ), $href, $info );
+	}
+
+
+	function done()
+	{
+		echo "  </tr>\n" ;
+		if ($this->row == 0) {
+			echo "<tr>"
+				. tag( "td", array( 
+								"align" => "center",
+								"COLSPAN" => sizeof( $this->colonnes ),
+								"BGCOLOR" => "#ffd0d0" ))
+				. "<strong>" . $this->texte_zero . "</strong>"
+				. "</td></tr>"; 
+		}
+		echo tag( "/table" ) . "\n";
+	}
+}
+
+?>

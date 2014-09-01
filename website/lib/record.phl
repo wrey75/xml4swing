@@ -1,0 +1,316 @@
+<?php
+
+//
+//	fichier:	record.phl
+//	Auteur:		William Rey
+//	Date:		04/1999
+//
+//	Inclusion:
+//		sql.phl
+//
+//	Description:
+//	============
+//	Cette librairie permet la gestion d'un enregistrement de
+//	la base de données via un formulaire par exemple.
+//
+
+class record {
+	var $type; // Liste des types de colonnes
+	var $data; // Données des colonnes
+	var $table; // Table SQL
+
+	//
+	//	iskey()
+	//	-------
+	//	Fonction privée. Permet de savoir si la colonne 'col'
+	//	passée en argument est une composante de la clé primaire.
+	//
+	//	col (chaîne): Nom de la colonne
+	//	Retourne 'true' si la colonne fait partie de la clé
+	//	primaire.
+	//
+	function iskey( $col )
+	{
+		return strpos( $this->type[ $col ], ":PRIMARY" );
+	}
+
+	function gettype( $col ) {
+		$t = split( ":", $this->type[ $col ] );
+		return $t[0];
+	}
+
+	function isrequired( $col )
+	{
+		return strpos( $this->type[ $col ], ":REQUIRED" );
+	}
+
+	function issequence( $col )
+	{
+		return strpos( $this->type[ $col ], ":IDENTITY" );
+	}
+
+	//
+	//	data() - Public
+	//	===============
+	//	Renvoie la donnée contenue dans la colonne $col (donnée
+	//	sans typage!).
+	//
+	function getdata( $col )
+	{
+		return $this->data[ $col ];
+	}
+
+
+	//
+	//	sqldata() - private
+	//	-----------------
+	//
+	//	$col: Nom de la colonne.
+	//	Retourne une chaîne contenant le texte correctement mis en
+	//	forme.
+	//
+	function sqldata( $col )
+	{
+		$str = trim( $this->data[ $col ] );
+		if ($str == "") return "NULL";
+
+		switch( $this->gettype( $col ) ) {
+			case "INT" :	//	Nombre entier
+			case "FLOAT" :	//	Monnaitaire (par défaut 8.2)
+				return $str;
+				break;
+
+			case "BOOL" :	//	OUI/NON
+				$str = "'" . strtoupper( $str ) . "'";
+				break;
+
+			case "DATE" :	// Date
+				// $str = "'" . db_quote_string( trim( $str ) ) . "'";
+				$str = sqldate( date2ts( $str ) );
+				// echo "##### $col = ". date2ts( $str ) . " #####";
+				break;
+
+			case "CHAR" :	// Chaîne
+				if ($this->iskey( $col )) {
+					$ch = trim( $str );
+					$str = "";
+					for ($i=0; $i < strlen( $ch ); $i++) {
+						$c = substr( $ch, $i, 1 );
+						if (eregi( "[_0-9A-Z]", $c )) {
+							$str .= strtoupper( $c );
+						}
+						else if (($c == " ") && (eregi( "[0-9A-Z]", substr( $str, -1 ) ))) {
+							$str .= "_";
+						}
+					}
+				}
+				$str = sqlstr( $str );
+				break;
+		}
+		return $str;
+	}
+
+	//
+	//	select()
+	//	--------
+	//	Sélection du recordset. 
+
+	function select( )
+	{
+		$col_list = $where_list = "";
+		reset( $this->type );
+		while ( list( $key, $val ) = each( $this->type ) ) {
+			if ($col_list) {
+				$col_list .= ", ";
+			}
+
+			$col_list .= $key;
+			if ($this->iskey( $key )) {
+				$where_list .= 
+						($where_list == "" ? " WHERE " : " AND " );
+				$where_list .= $key;
+				$where_list .= " = " . $this->sqldata( $key );
+			}
+		}
+		$query = "SELECT " . $col_list 
+					. " FROM " . $this->table
+					. $where_list;
+
+		$cols = sql_onerow( $query );
+		if (!$cols) {
+			echo "\n<!-- Erreur SELECT: \n$query\n-->\n";
+			return false;
+		}
+
+		/*	Récupération	*/
+		$row = array();
+		$i = 0;
+		reset( $this->type );
+		while ( list( $key, $val ) = each($this->type) ) {
+			$row[ $key ] = trim( $cols[ $i++ ] );
+			$this->data[ $key ] = $row[ $key ];
+		}
+			
+		return $row;
+	}
+
+
+	function insert( )
+	{
+		
+		$col_list = $data_list = "";
+		reset( $this->type );
+		while ( list( $key, $val ) = each( $this->type )) {
+			$v = $this->sqldata( $key );
+
+			// echo "## $key = " . $this->sqldata( $key ) . "##"; 
+
+			if ($this->issequence( $key )) $seq =$key;
+			if (strcmp( $v, "NULL" )) {
+				if ($col_list != "") {
+					$col_list .= ", ";
+					$data_list .= ", ";
+				}
+				$col_list .= $key;
+				$data_list .= $v;
+			}
+		}
+
+		$query = "INSERT INTO " . $this->table 
+				. "(" . $col_list . ") VALUES (" . $data_list . ")";
+
+		if (!sql( $query )) {
+			echo "<!-- ERREUR SQL (INSERT) :\n$query\n-->\n";
+			return false;
+		}
+
+		if ($seq) $this->data[ $seq ] = sql_lastid();
+	
+		return true;
+	}
+
+
+	function delete( )
+	{
+		$where_list = "";
+		reset( $this->type );
+		while ( list( $key, $val ) = each($this->type) ) {
+			if ($this->iskey( $key )) {
+				$where_list .= ($where_list == "" ? " WHERE " : " AND " );
+				$where_list .= $key . " = " . $this->sqldata( $key );
+			}
+		}
+		$query = "DELETE FROM " . $this->table . $where_list;
+	
+		if (!sql( $query )) {
+			echo "<-- ERREUR SQL [record->delete()] :\n$query\n-->\n";
+			return false;
+		}
+
+		return true;
+	}
+
+	
+	function update()
+	{
+		$where_list =  $data_list = "";
+		reset( $this->type );
+		while ( list( $key, $val ) = each($this->type) ) {
+			$col_list .= $key;
+			if ($this->iskey( $key )) {
+				$where_list .= ($where_list == "" ? " WHERE " : " AND " );
+				$where_list .= $key . " = " . $this->sqldata( $key );
+			}
+			else {
+				$data_list .= ($data_list == "" ? " SET " : ", " );
+				$data_list .= $key . " = " . $this->sqldata( $key );
+			}
+		}
+		$query = "UPDATE " . $this->table . $data_list . $where_list;
+		if (!sql( $query )) {
+			echo "\n<!-- Erreur SQL (record->update):\n" . htmlspecialchars( $query ) . "\n-->";
+			return false;
+		}
+	
+		return true;
+	}
+	
+
+	//
+	//	record() - constructeur
+	//	-----------------------
+	//	Routine de construction de l'objet.
+	//
+	//	$table (string)	: Nom de la table.
+	//	$infos : Liste des colonnes s'il s'agit d'une chaîne de
+	//		caractères simple (dans ce cas les colonnes sont
+	//		séparées par des virgules) ou tableau des colonnes.
+	//	$lstvars : Liste des données à affecter à l'enregistrement
+	//		Si la variable n'est pas précisée, on prend les
+	//		données en entrée de la page PHP (variables passées
+	//		par la méthode POST ou GET.
+	//
+	function record( $table, $infos )
+	{
+		$this->table = $table;
+		if (is_string( $infos )) {
+			// Transformer la chaîne en tableau
+			$infos = split( ", ", $infos );
+		}
+
+		$this->data = array();
+		$this->type = array();
+
+		reset( $infos );
+		while (list($i, $key) = each($infos)) {
+
+
+			$colname = eregi_replace( "[\^\*+]*([_A-Z1-9]*).*", "\\1", $key );
+			switch( substr( $key, -1 ) ) {
+				case "%" :
+					$type = "INT";
+					break;
+
+				case '#' :
+					$type = "DATE";
+					// echo "#### $colname = " . $GLOBALS[ $colname ] . " ####";
+					break;
+
+				case '?' :
+					$type = "BOOL";
+					break;
+
+				case '$' :
+					$type = "CHAR";
+					break;
+
+				default :
+					$type = "CHAR";
+					break;
+			}
+			if (substr( $key, 0, 1 ) == '*') $type .= ":PRIMARY";
+			if (substr( $key, 0, 1 ) == '^') $type .= ":PRIMARY:IDENTITY";
+			if (strrpos( $key, '+' )) $type .= ":REQUIRED";
+	
+			$this->data[ $colname ] = $GLOBALS[ $colname ];
+			$this->type[ $colname ] = $type;
+		}
+	
+	}
+
+	//
+	//	Cette fonction récupère toutes les colonnes
+	//	à partir des variables
+	//
+	function getinput()
+	{
+		$rows = array();
+		while (list($key, $val) = each($this->type)) {
+			$rows[ $key ] = $GLOBALS[ $key ];
+		}
+		return $rows;
+	}
+
+};	//	class record
+
+?>

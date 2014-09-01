@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<JDialog rootClass="AutoDialog" 
+			title="Dialog Test" 
+			name="com.oxande.xmlswing.example.ledger.AbstractAccountDialog"
+			resizable="false"
+			modal="true">
+
+	<table>
+		<tr>
+		  <td>ID:</td>
+		  <td><textfield property="accountId" width="8" /></td>
+		</tr>
+
+		<tr>
+		  <td>Label:</td>
+		  <td><textfield property="accountLabel" width="50" /></td>
+		</tr>
+		
+		<tr>
+		  <td></td>
+		  <td>
+		  	<button text="OK" action="submit" />
+		  	<button text="Cancel" />
+		  </td>
+		</tr>
+	</table>
+</JDialog>

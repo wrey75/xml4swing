@@ -1,0 +1,668 @@
+<?php
+
+/*
+ *	Fichier:	form.phl
+ *	Auteurs:	Antoine Podvin
+ *				William Rey
+ *
+ */
+
+
+
+class formulaire {
+
+var $dispmode;		//	Réprésentation à l'intérieur d'un tableau ?
+var	$font;		//	Fonte pour les libellés
+var	$align;		//	Alignement horizontal des libellés
+var	$valign;	//	Alignement vertical des libellés
+var $col;		//	Colonne en cours
+var $nb_cols;	//	Nombre de colonnes maximum pour une table
+var $bk_color;	//	Nombre de colonnes maximum pour une table
+var $font;	//	Fonte pour les libellés
+var $readonly;	//	Lecture seule
+
+
+//
+//	Création du formumaire
+//
+
+function formulaire($file, $name="formulaire", $method="POST" ) {
+    echo tag( "form", array( 
+			"METHOD" => $method,
+			"ACTION" => $file,
+			"NAME" => $name ));
+
+	$this->dispmode = 1;
+	$this->align = "right";
+	$this->valign = false;
+	$this->nb_cols = 5;
+	$this->readonly = false;
+	$this->font = false;
+	$this->errs = array();
+}
+
+
+function set_readonly()
+{
+	$this->readonly = true;
+}
+
+
+//
+//	Accès SQL
+//
+
+function sql( $query )
+{
+}
+
+
+function done() {
+	echo "</FORM>\n";
+}
+
+
+function end_line( ) 
+{
+	switch( $this->dispmode ) {
+		case 1 :
+			while( $this->col < $this->nb_col ) {
+				$this->col++;
+				echo "  <TD></TD>\n";
+			}
+			echo "</TR>\n";
+			break;
+
+		default :
+			echo "</P>\n";
+			break;
+	}
+}
+
+
+function start_line( ) 
+{
+	switch( $this->dispmode ) {
+		case 1 :
+			echo "<TR>\n";
+			$this->col = 0;
+			break;
+
+		default :
+			echo "<P ALIGN=left>\n";
+			break;
+	}
+}	
+
+//
+//	Affiche le libellé
+//	------------------
+//	$str : Libellé à afficher. Si le libellé est vide, on considère
+//		qu'il n'y a pas de libellé ou qu'il s'agit d'une suite.
+//
+  
+
+function libelle( $str = "" ) 
+{
+	$strout = "  <TD>&nbsp;</TD>\n"
+			. caption( $str );
+	return $strout;
+}
+
+function disp( $caption, $obj = false )
+{
+	if( $this->errs[ $obj ] ){
+		$ret = tag( "FONT", array( "COLOR"=>"#ff0000" ) ) . $caption . "&nbsp;:" . tag( "/FONT" );
+	}
+	else {
+		$ret = $caption . "&nbsp;:";
+	}
+	return $ret;
+}
+
+
+function caption( $str = "", $bgcolor = "#e0e0e0" ) 
+{
+	//	Header
+	switch ($this->dispmode) {
+		case 1 :
+			$this->col++;
+			$strout .= "  <TD" 
+				. mk_attrib( "NOWRAP" ) 
+				. mk_attrib( "ALIGN", $this->align );
+
+			if ($this->valign) {
+				$strout .= mk_attrib( "VALIGN", $this->valign ) ;
+			}
+
+			if ($bgcolor) {
+				 $strout .= mk_attrib( "BGCOLOR", $bgcolor );
+			}
+			$strout .= ">";
+			$strout .= "&nbsp;";
+
+			if ($str != "") {
+				$strout .= $str;
+				if (eregi( "[a-z]$", $str)) {
+					$strout .= ": ";
+				}
+			}
+
+			$strout .= "  </TD>\n";
+			break;
+
+		default :
+			$strout .= "<EM>" . $str . "</EM>";
+	}
+	return $strout;
+}
+
+function captiongroup( $str ) 
+{
+	$strout = "";
+
+	//	Header
+	switch ($this->dispmode) {
+		case 1 :
+			$strout .= "  <TD COLSPAN=3><BR>";
+			if ($this->libfont) {
+				$strout .= "<FONT" 
+					. mk_attrib( "SIZE", $this->libfontsize + 1)
+					. mk_attrib( "FACE", $this->libfont ) . ">";
+			}
+			$strout .= htmlspecialchars($str) . "&nbsp;:";
+			if ($this->libfont) {
+				$strout .= "</FONT>";
+			}
+			$strout .= "</TD>\n";
+			break;
+
+		default :
+			$strout .= "<EM>" . $str . "</EM>";
+	}
+	return $strout;
+}
+
+
+function draw_libelle( $str = "" ) 
+{
+	echo $this->libelle( $str );
+}
+
+
+function cell_data( $str )
+{
+	switch( $this->dispmode ) {
+		case 1 :
+			$strout = "  <TD>\n" 
+					. "    " . $str . "\n"
+					. "  </TD>\n";
+			break;
+
+		default :
+			$strout = $str;
+	}
+	return $strout;
+}
+
+
+	function hidden( $name, $val = "" )
+	{
+    	return "<INPUT"
+				. mk_attrib( "TYPE", "hidden" )
+				. mk_attrib( "NAME", $name )
+				. mk_attrib( "VALUE", $val )
+				. ">";
+	}
+
+
+	function noedit($name, $val="") 
+	{
+		$str = $this->hidden( $name, $val )
+				. "<B><CODE>" . $val . "</CODE></B>";
+		return $str;
+	}
+
+
+function text($name, $default="", $maxlength=-1, $size = false, $options="") 
+{
+	if (!$size) $size = 50;
+
+	//	Longueur de saisie
+	if( $maxlength < $size ) {
+		$size = $maxlength;
+    }
+
+	//
+    $str = "<INPUT"
+			. mk_attrib( "TYPE", ($this->readonly ? "hidden" : "text" ) )
+			. mk_attrib( "NAME", $name )
+			. mk_attrib( "VALUE", trim( $default ));
+	if (!$this->readonly) {
+		if ($size != -1) {
+			$str .= mk_attrib( "SIZE", $size );	
+		}
+		if ($maxlength != -1) {
+			$str .= mk_attrib( "MAXLENGTH", $maxlength );
+		}
+	}
+	$str .= $options . ">";
+	if ($this->readonly) {
+		$str .= "<CODE>$default</CODE>";
+	}
+	return $str;
+}
+
+function checkbox($name, $default="" ) 
+{
+	if( $default == "N" ) $default = "";
+	if( $this->readonly ){
+		if( !$default == 'Y' ){
+			$str = "OUI";
+		}
+		else {
+			$str = "NON";
+		}
+	}
+	else {
+    	$str = "<INPUT"
+					. mk_attrib( "TYPE", "checkbox" )
+					. mk_attrib( "NAME", $name )
+					. mk_attrib( "VALUE", "Y" );
+		if( $default == "Y" ) $str .= " CHECKED";
+		$str .= ">";
+	}
+	return $str;
+}
+
+
+function draw_text($name, $default="", $maxlength = -1, $size = false, $options="") 
+{
+	$str = $this->text( $name, $default, $maxlength, $size, $options );
+	$this->col++;
+	$str = $this->cell_data( $str );
+	echo $str;
+}
+
+function textarea($name, $default="", $cols=0, $rows=0, $options="") 
+{
+	if ($this->readonly) {
+		$str = $default;
+		$str = stripslashes( $str );
+		$str = htmlspecialchars( $str );
+		$str = nl2br( $str );
+	}
+	else {
+    	$cols = ($cols > 50) ? 50 : $cols;
+    	$raws = ($rows > 16) ? 16 : $rows;
+
+    	$str = "<TEXTAREA"
+				. mk_attrib( "NAME", $name );
+		if ($cols != 0) {
+			$str .= mk_attrib( "COLS", $cols );
+		}
+		if ($rows != 0) {
+			$str .= mk_attrib( "ROWS", $rows );
+		}
+		$str .= ">" . htmlspecialchars( stripslashes( $default ) );
+		$str .= "</TEXTAREA>";
+	}
+	return $str;
+}
+
+
+  function draw_button($name, $value, $type="submit", $options="") {
+    echo("&nbsp;<input type=$type name=$name value=\"$value\" $options>&nbsp;\n");
+  }
+
+
+function select($name, $data, $size=1, $default="", $options="")
+{ 
+	if (!is_array($data)) {
+       $str = "<I>Non renseigné</I>";
+       return $str; 
+    }
+
+    $str = "<SELECT"
+				. mk_attrib( "SIZE", $size )
+				. mk_attrib( "NAME", $name )
+				. ">\n";
+	reset( $data );
+	while( list($key, $val ) = each( $data )) {
+
+		$str .= "<OPTION" . mk_attrib( "VALUE", $key );
+		if ($default == $key) {
+			$str .= mk_attrib( "SELECTED" );
+		}
+		$str .= ">" . $val . "\n";
+    }
+
+    $str .= "</SELECT>\n";
+	return $str;
+}
+
+
+/*
+ *	button_xxx()
+ *	============
+ *	Affichage des boutons de:
+ *		* Modification	(button_update)
+ *		* Suppression (button_delete)
+ *		* Annulation (buttton_reset)
+ *		* Ajout (button_insert)
+ *
+ *************************************************************************/
+
+
+function button( $name, $value, $type = "submit", $javascript = "" )
+{
+	
+	$str = "<INPUT" 
+				. mk_attrib( "TYPE", $type )
+				. mk_attrib( "NAME", $name )
+				. mk_attrib( "VALUE", $value );
+
+	//	Complément JavaScript
+	if ($javascript) {
+		$str .= mk_attrib( "OnClick", $javascript );
+	}
+
+	$str .= ">&nbsp;";
+	return $str;
+}
+
+function button_new()
+{
+	return $this->button( "BTN_NEW", "Nouveau", "submit" );
+}
+
+function button_find()
+{
+	return $this->button( "BTN_FND", "Chercher", "submit" );
+}
+
+function button_insert()
+{
+/*
+	$str = "<INPUT" 
+				. mk_attrib( "TYPE", "image" )
+				. mk_attrib( "NAME", "ACTION_INSERT" )
+				. mk_attrib( "SRC", "images/btn_insert.gif" )
+				. mk_attrib( "VALUE", "Insérer" )
+				. mk_attrib( "ALT", "Insérer" )
+				. mk_attrib( "BORDER", 0 )
+				. ">&nbsp;";
+
+	return $str;
+*/
+	return $this->button( "BTN_INS", "Insérer", "submit" );
+}
+
+function button_delete( 
+		$str = "Etes-vous sûr de vouloir détruire cette fiche?" )
+{
+	if ($str != "" ) {
+		$str = "return confirm('" . $str . "')";
+	}
+/*
+	$str = "<INPUT" 
+				. mk_attrib( "TYPE", "image" )
+				. mk_attrib( "NAME", "ACTION" )
+				. mk_attrib( "SRC", "images/btn_delete.gif" )
+				. mk_attrib( "VALUE", "Détruire" )
+				. mk_attrib( "BORDER", 0 )
+				. ">&nbsp;";
+
+	return $str;
+*/
+	return $this->button( "BTN_DEL", "Détruire", "submit", $str );
+}
+
+
+function button_reset()
+{
+	if ($this->readonly) {
+		return "";
+	}
+
+	return $this->button( "reset", "Annuler", "reset" );
+}
+
+
+function button_update()
+{
+/*
+	$str = "<INPUT" 
+				. mk_attrib( "TYPE", "image" )
+				. mk_attrib( "NAME", "ACTION" )
+				. mk_attrib( "SRC", "images/btn_update.gif" )
+				. mk_attrib( "VALUE", "Modifier" )
+				. mk_attrib( "BORDER", 0 )
+				. ">&nbsp;";
+
+	return $str;
+*/
+	return $this->button( "BTN_UPD", "Modifier" );
+}
+
+
+	function combo( $name, $default, $tab, $bOptional = false )
+	{
+		$str = "";
+	
+		$bSelected = false;
+		$default = trim( $default );
+		while (list( $key, $val ) = each( $tab )) {
+			$key = trim( $key );
+			if ($this->readonly) {
+				if ( $key == $default) {
+					$str .= "<CODE>" . htmlspecialchars( $val ) . "</CODE>";
+				}
+			}
+			else {
+				$str .= "<OPTION" . mk_attrib( "VALUE", $key );
+				if ($key == $default) {
+					$str .= mk_attrib( "SELECTED" );
+					$bSelected = true;
+				}
+				$str .= ">" . htmlspecialchars( $val ) . "\n";
+			}
+		}
+	
+		if ($this->readonly) {
+			$strout = $this->hidden( $name, $default ) . $str;
+		}
+		else {
+			$strout = "<SELECT" 
+				. mk_attrib( "NAME", $name )
+				. ">\n";
+			if (!$bSelected || $bOptional) {
+				$strout .= "<OPTION" . mk_attrib( "VALUE", "") . ">";
+				$strout .= "&lt; Non renseigné &gt;\n";
+			}
+			$strout .= $str . "</SELECT>\n";
+		}
+		return $strout;
+	}
+
+
+
+	function sqlcombo( $name, $default, $query, $bOptional = false )
+	{
+		$tab = sql_all( $query );
+		$row = array();
+		if ($tab) {
+			while (list( $i, $data) = each( $tab )) {
+				$row[ $data[0] ] = $data[1];
+			}
+		}
+		else {
+			echo "\n<!--"
+				. " SQLCOMBO : La phrase SQL ne retourne pas d'information\n"
+				. htmlspecialchars( $query )
+				. "\n-->\n";
+		}
+		return $this->combo( $name, $default, $row, $bOptional );
+	}
+
+	function arraycombo( $name, $default, $tab, $bOptional = false )
+	{
+		$row = array();
+		while (list( $i, $data ) = each( $tab )) {
+			if( eregi( ":", $data ) ) {
+				$key = trim( eregi_replace( "(.*):.*", "\\1", $data ) );
+				$val = trim( eregi_replace( ".*:(.*)", "\\1", $data ) );
+				$row[ $key ] = $val;
+			}
+			else {
+				$row[ $i ] = $data;
+			}
+		}
+		return $this->combo( $name, $default, $row, $bOptional );
+	}
+
+function adrtext( $adr1, $adr2, $cpost, $ville, $ipays )
+{
+	if (!$ipays || $ipays == "") $ipays = "FRA";
+
+	$str = $this->text( "adr1", $adr1, 60 ) . "<BR>\n"
+		. $this->text( "adr2", $adr2, 60 ) . "<BR>\n"
+		. $this->text( "cpost", $cpost, 5 ) . "&nbsp;&nbsp;"
+		. $this->text( "ville", $ville, 50, 35 ) . "<BR>\n"
+		. $this->sqlcombo( "ipays", $ipays, 
+				"SELECT ipays, lpays FROM pays ORDER BY ipays" );
+
+	return $str;
+}
+
+
+	//
+	//	action()
+	//	--------
+	//	Action à mener pour la page.
+	//
+
+	function action( )
+	{
+		global $BTN_DEL;
+		global $BTN_UPD;
+		global $BTN_INS;
+		global $BTN_NEW;
+		global $BTN_FND;
+
+		if ($BTN_DEL != "") {
+			return "DEL";
+		}
+		else if ($BTN_INS != "") {
+			return "INS";
+		}
+		else if ($BTN_UPD != "") {
+			return "UPD";
+		}
+		else if ($BTN_NEW != "") {
+			return "NEW";
+		}
+		else if ($BTN_FND != "") {
+			return "FIND";
+		}
+		else {
+			return false;
+		}
+	}
+
+	
+	function setmode( $mode )
+	{
+		$this->mode = $mode;
+		$this->readonly = ($mode == "R/O");
+	}
+
+
+	function getmode()
+	{
+		if ($this->mode) {
+			return $this->mode;
+		}
+		$this->mode = $this->action();
+		if (!$this->mode) {
+			$this->mode = "R/O";
+		}
+		return $this->mode;
+	}
+
+
+	function textinfo( $texte )
+	{
+		echo "<DIV ALIGN=left><FONT"
+				. mk_attrib( "SIZE", 1 )
+				. mk_attrib( "FACE", "Arial,Swiss,Helvetica" ) . ">";
+		echo $texte;
+		echo "</FONT></DIV>\n";
+	}
+
+	function loaddata( $r )
+	{
+		$bOk = true;
+		switch ($this->action()) {
+			case "DEL" :
+				$this->set_readonly();
+				break;
+	
+			case "INS" :
+				$bOk = $r->insert();
+				break;
+	
+			case "UPD" :
+				$bOk = $r->update();
+				break;
+	
+		}
+		$tab = ($bOk ? $r->select() : $r->getinput());
+		return $tab;
+	}
+
+	function info( $txt )
+	{
+		if( !$this->readonly ) {
+			return "<SMALL>$txt</SMALL>";
+		}
+	}
+
+	function err( $obj, $txt )
+	{
+		$this->errs[ $obj ] .= $txt;
+	}
+
+	function errlist( $mode = 1, $title = "Erreurs rencontrées:" )
+	{
+		$lst = "";
+		reset( $this->errs );
+		while( list( $k, $v ) = each( $this->errs ) ){
+			switch( $mode ) {
+				case 1 : $lst .= "\n<LI>$v"; break;
+				case 2 : $lst .= "\n<TR><TD VALIGN=top>" . imgtag( IMGDIR . "/ball.red.gif" ) . "</TD><TD CLASS=errform>$v&nbsp;</TD></TR>"; break;
+			}
+		}
+		if( $lst ) {
+			switch( $mode ) {
+				case 1 :
+					$lst = "<UL CLASS=errform>" . htmlentities( $title ) . $lst . "</UL>";
+					break;
+
+				case 2 :
+					$lst = "<TABLE CLASS=errform BORDER=0 CELLSPACING=0 BGCOLOR=#ffe0e0>\n"
+							 . "<TR><TH COLSPAN=2 ALIGN=left>&nbsp;" . htmlentities( $title ) . "</TH></TR>"
+							 . $lst
+							 . "</TABLE>";
+					break;
+
+				default :
+					break;
+			}
+		}
+		return $lst;
+	}
+
+};	//	class formulaire
+
+?>

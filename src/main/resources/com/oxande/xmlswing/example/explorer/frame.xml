@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<JFrame rootClass="ExplorerFrame"
+		name="com.oxande.xmlswing.example.explorer.AbstractExplorerFrame"
+		coolsize="300,150"
+		title="File Explorer">
+  <menubar>
+	<menu text="_File">
+		<menu text="_Look &amp; Feel">
+			<lookandfeel />
+       	</menu>
+       	<menuitem action="exit">E_xit</menuitem>
+	</menu>
+    <menu text="_Help">
+		<menuitem action="showAboutDlg">_About</menuitem>
+    </menu>
+  </menubar>
+  
+  <toolbar id="toolbar">
+  </toolbar>
+  
+  <splitpane>
+     <tree id="pathTree" vscroll="auto" hscroll="auto"/>
+     <list id="fileList" vscroll="auto"/>
+  </splitpane>
+  
+  <statusbar id="statusBar" property="statusMessage" />
+  
+</JFrame>

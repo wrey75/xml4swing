@@ -1,0 +1,1039 @@
+<?php
+/*
+ *	fichier:	xform.phl
+ *	Auteur:		William Rey
+ *	Date:		07/2001
+ *
+ *  Cette classe permet la gestion directe des tables SQL avec un code excessivement
+ *  simple.
+ *  Vous devez spécifier la table (unique) qui doit être modifiée, et 
+ *  éventuellement dans un fichier de styles (.CSS) l'apparence du
+ *  formulaire.
+ *
+ *  Le formulaire est directement relié à la base de données et la fonction 
+ *  d'initialisation permet de limiter (éventuellement) les droits d'accès.
+ *
+ */
+
+define( "XTYPE_IDENTITY", 1 );
+define( "XTYPE_CHAR", 2 );
+define( "XTYPE_MEMO", 3 );
+define( "XTYPE_MONEY", 4 );
+define( "XTYPE_DATE", 5 );
+define( "XTYPE_BOOLEAN", 6 );
+define( "XTYPE_INTEGER", 7 );
+define( "XTYPE_PERCENT", 8 );
+define( "XTYPE_DATE", 9 );
+
+define( "XMODE_INSERT", 1 );
+define( "XMODE_NEW", 2 );
+define( "XMODE_UPDATE", 3 );
+define( "XMODE_DELETE", 4 );
+define( "XMODE_READONLY", 5 );
+define( "XMODE_READWRITE", 6 );
+
+
+class xform {
+	var $rec;         /* Enregistrement associé */
+	var $tableName;   /* Nom de la table SQL */
+	var $cols;        /* Colonnes gérées */
+    var $form;        /* Formulaire simple associé */
+	var $mode;        /* Mode du formulaire */
+	var $droits;      /* Droits offerts */
+
+	function xform( $table, $droit = "SIUDX" ){
+		global $BTN_INS, $BTN_UPD, $BTN_NEW, $BTN_DEL, $BTN_SEL;
+		$this->cols = array();
+		$this->tableName = $table;
+		$this->droits = $droit;
+
+		/*	Déterminer le mode */		
+		if( $BTN_INS ) $xmode = XMODE_INSERT;
+		elseif( $BTN_UPD ) $xmode = XMODE_UPDATE;
+		elseif( $BTN_DEL ) $xmode = XMODE_DELETE;
+		elseif( $BTN_SEL ) {
+			$xmode = ($this->isAuthorized( XMODE_UPDATE ) ?
+						XMODE_READWRITE :
+						XMODE_READONLY );
+		}
+		else $xmode = false;
+
+		$this->mode = $xmode;
+		$this->delText = "Etes-vous sûr de vouloir supprimer l'information?";
+		$this->errors = array();
+	}
+
+	function setImgDir( $dir ){
+		$this->imgDir = $dir;
+	}
+
+	function addError( $err ){
+		$this->errors[] = $err;
+	}
+
+	function displayErrors( ){
+		echo tag( "UL", array( "CLASS"=>"xform" ) );
+		reset( $this->errors );
+		while( list( $k, $v ) = each( $this->errors ) ){
+			echo "    <LI>" . htmlentities( $v ) . "\n";
+		}
+		echo tag( "/UL" );
+	}
+
+	function isRequired( $colname ){
+		$col = $this->cols[ $colname ];
+		return $col[ "required" ];
+	}
+
+	function isKey( $colname ){
+		$col = $this->cols[ $colname ];
+		return $col[ "key" ];
+	}
+
+	function checkData( &$col )
+	{
+		$ok = true;
+		$val = $col[ "data" ];
+		if ($val == "") {
+			if ($this->isRequired( $colname )) {
+				$col[ "error" ] = "Champ obligatoire";
+				$bOk = false;
+			}
+			else {
+				return TRUE;
+			}
+		}
+
+		switch( $col[ "type" ] ) {
+		case XTYPE_DATE :
+			if ( ereg( "([0-9]{1,2})[/.]([0-9]{1,2})[./]([0-9]{2,4})", $val, $reg ) ) {
+				if ($reg[3] < 30) {
+					$reg[3] += 2000;
+				}
+				else if ($reg[3] < 100) {
+					$reg[3] += 1900;
+				}
+				if (!checkdate( $reg[2], $reg[1], $reg[3] )) {
+					$col[ "error" ] = "La date n'est pas valide";
+					$ok = false;
+				}
+				else {
+					$col[ "data" ] = "$reg[1]/$reg[2]/$reg[3]";
+				}
+			}
+			else {
+				$col[ "error" ] = "Format invalide pour une date (JJ/MM/AAAA)";
+				$ok = false;
+			}
+			break;
+
+		case XTYPE_MONEY :
+			if( !settype( $val, "double" ) ){
+				$col[ "error" ] = "La valeur doit être un décimal.";
+				$ok = false;
+			}
+			break;
+
+		case XTYPE_BOOLEAN :
+			if( $val != "N" && $val != "Y" ){
+				$col[ "error" ] = "La valeur doit être 'OUI' ou 'NON'.";
+				$ok = false;
+			}
+			break;
+
+		case XTYPE_INTEGER :
+			if (!settype( $val, "integer" )) {
+				$col[ "error" ] = "La valeur  doit être un nombre entier.";
+				$ok = false;
+			}
+			break;
+
+		default :
+			$col[ "error" ] = "Ce type de données n'est pas gérée!!";
+			$ok= false;
+			break;
+		}
+		return $ok;
+	}
+
+	/*	Vérifier l'information de chaque colonne */
+	function checkAllData( ) {
+		$ok = true;
+		reset( $this->cols );
+		while( $ok && (list($k, $col ) = each( $this->cols ))) {
+			$ok = $this->checkData( $col );
+		}
+		return ok;
+	}
+
+	function getInputSize( &$col, $texte ) {
+		$arr = explode(".", $texte );
+		$col[ "size" ] = $arr[0];
+		$col[ "decs" ] = $arr[1];
+	}
+
+	function addCol( $colname, $info, $desc ){
+		$infos = explode( ";", $info );
+		$i = 0;
+
+		/* Type d'information */
+		$type = $infos[ $i++ ];
+		if( !strcasecmp( $type, "ID" )){
+			$col[ "type" ] = XTYPE_IDENTITY;
+		}
+		else if( substr( $type, 0, 1 ) == "A" ){
+			$col[ "type" ] = XTYPE_CHAR;
+			$this->getInputSize( $col, substr( $type, 1 ) );
+		}
+		else if( substr( $type, 0, 1 ) == "N" ){
+			$col[ "type" ] = XTYPE_INTEGER;
+			$this->getInputSize( $col, substr( $type, 1 ) );
+		}
+		else if( substr( $type, 0, 1 ) == 'B' ){
+			$col[ "type" ] = XTYPE_BOOLEAN;
+		}
+		else if( !strcasecmp( $type, "DATE" ) ){
+			$col[ "type" ] = XTYPE_DATE;
+		}
+		else if( !strcasecmp( $type, "SYSDATE" ) ){
+			$col[ "type" ] = XTYPE_DATE;
+		}
+		else if( (substr( $type, 0, 1 ) == 'P') || !strcasecmp( $type, "PERCENT" ) ){
+			$col[ "type" ] = XTYPE_PERCENT;
+			$this->getInputSize( $col, "3.3" );
+		}
+		else if( !strcasecmp( substr( $type, 0, 4), "MEMO" ) || !strcasecmp( substr( $type, 0, 4 ), "TEXT" )){
+			$col[ "type" ] = XTYPE_MEMO;
+			$col[ "size" ] = 50;
+			$col[ "decs" ] = 5;
+			$this->getInputSize( $col, substr( $type, 4 ) );
+		}
+		else if( $type == "COMBO" ){
+			$col[ "type" ] = XTYPE_COMBO;
+			$col[ "select" ] = $infos[ $i++ ];
+		}
+		else {
+			echo $this->perror( "Type " . $type . " is not correct" );
+		}
+		$col[ "desc" ] = $desc;
+		$col[ "name" ] = $colname;
+		$col[ "http" ] = false;
+		$col[ "mail" ] = false;
+		$col[ "data" ] = $GLOBALS[$colname];
+		if( get_magic_quotes_gpc() ) {
+			$col["data"] = stripslashes( $col["data"] );
+		}
+
+
+		/* Analyse des options restantes */
+		$col[ "required" ] = false;
+		$col[ "key" ] = false;
+		$col[ "readonly" ] = false;
+		while( list( $k, $v ) = each( $infos ) ){
+			if( !strcasecmp( $v, "required" ) ){
+				$col[ "required" ] = true;
+			}
+			elseif( !strcasecmp( $v, "ReadOnly" ) || !strcasecmp( $v, "R/O" ) ){
+				$col[ "readonly" ] = true;
+			}
+			elseif( !strcasecmp( $v, "key" ) ){
+				$col[ "key" ] = true;
+			}
+			elseif( !strcasecmp( $v, "http" ) || !strcasecmp( $v, "url" ) ){
+				$col[ "http" ] = true;
+			}
+			elseif( !strcasecmp( $v, "mail" ) ){
+				$col[ "mail" ] = true;
+			}
+		}
+
+		if( $GLOBALS[ $colname ] ){
+			$col[ "data" ] = $GLOBALS[ $colname ];
+			if( get_magic_quotes_gpc() ) {
+				$col["data"] = stripslashes( $col["data"] );
+			}
+		}
+
+		/*	Affectation finale */
+		$this->cols[ $colname ] = $col;
+	}
+
+	function value( $colname ){
+		$col = $this->cols[ $colname ];
+		return $col[ "data" ];
+	}
+
+	function perror( $errtext ) {
+		return tag( "P", array( "CLASS"=>"xform" ) )
+			. tag( "FONT", array( "COLOR"=>"#ff0000" ) )
+			. htmlentities( $errtext )
+			. tag( "/FONT" )
+			. tag( "/P" );
+	}
+
+	function description( $col ){
+		$out = "    " . tag( "TH", array( "CLASS"=>"xform", "nowrap" ));
+		if( $col[ "error" ] ){
+			$out .= tag( "FONT", array( "COLOR"=>"#ff0000" ));
+		}
+		$out .= $col["desc"] . "&nbsp;:";
+		if( $col[ "error" ] ){
+			$out .= tag( "/FONT" );
+		}
+		$out .=	tag( "/TH" ) . "\n";
+		return $out;
+	}
+
+	function Combo( $col, $mode ){
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		$v = $col[ "data" ];
+		$rows = sql_all( $col["select"] );
+		if( !$rows ){
+			echo $this->perror( "SQL: " . $col["select"] );
+		}
+		switch( $mode ){
+			case XMODE_READONLY :
+			case XMODE_DELETE :
+				$out .= "    <TD CLASS=\"xform\">";
+				$value = "--";
+				while( list( $dummy, $row ) = each( $rows )){
+					list( $k, $v ) = $row;
+					if( !strcasecmp( $col["data"], $k ) ) {
+						$value = htmlentities( $v )
+								. tag( "INPUT", array( "TYPE"=>"hidden",
+														"NAME"=>$col["name"],
+														"VALUE"=>$col["data"] ) );
+					}
+				}
+				$out .= "$value</TD>";
+				break;
+
+			case XMODE_NEW :
+				$col["data"] = "";
+
+			default:
+				$arr = array( "NAME"=>$col["name"], "CLASS"=>"xform" );
+				$out .= "    <TD CLASS=xform>". tag( "SELECT", $arr );
+				if( !$this->isRequired( $col["name"] ) ) {
+					$out .= "<OPTION VALUE=\"\">Inconnu</OPTION>";
+				}
+				while( list( $k, $row ) = each( $rows )){
+					list( $k, $v ) = $row;
+					$arr = array();
+					$out .= "<OPTION VALUE=\"$k\"";
+					if( !strcasecmp( $col["data"], $k ) ) $out .= " SELECTED";
+					$out .= ">" . htmlentities( $v ) . "\n";
+				}
+				$out .= "</SELECT>";
+				$out .= "</TD>\n";
+				$out .= "  </TR>\n";
+				break;
+		}
+		return $out;
+
+	}
+
+	function Memo( $col, $mode ) {
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		switch( $mode ){
+			case XMODE_READONLY:
+			case XMODE_DELETE:
+				$out .= "    <TD CLASS=xform>" . nl2br( htmlentities( $col["data"] ) ) . "</TD>";
+				break;
+
+			case XMODE_NEW :
+				$col["data"] = "";
+
+			default:
+				$out .= "    <TD CLASS=xform>"
+					. tag( "TEXTAREA", array( "CLASS"=>"xform", "COLS"=>$col["size"], "ROWS"=>$col["decs"], "NAME"=>$col["name"] )) . htmlentities( $col["data"] ) . "</TEXTAREA></TD>\n";
+				break;
+
+		}
+		$out .= "  </TR>\n";
+		return $out;
+	}
+
+	function Boolean( $col, $mode ){
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		switch( $mode ){
+			case XMODE_READONLY :
+				$out .= "<TD CLASS=\"xform\">";
+				switch( $col["data"] ){
+					case "Y" :
+						$out .= "OUI" . tag( "INPUT", array( "TYPE"=>"HIDDEN", "NAME"=>$col["name"], "VALUE"=>"Y" ));
+						break;
+					case "N":
+						$out .= "NON" . tag( "INPUT", array( "TYPE"=>"HIDDEN", "NAME"=>$col["name"], "VALUE"=>"N" ));
+						break;
+					default :
+						$out .= "Indéterminé" . tag( "INPUT", array( "TYPE"=>"HIDDEN", "NAME"=>$col["name"], "VALUE"=>"" ));
+						break;
+				}
+				$out .= "</TD>";
+				break;
+
+			default :
+				$arr = array( "NAME"=>$col["name"], "CLASS"=>"xform" );
+				$out .= "    <TD CLASS=xform>". tag( "SELECT", $arr );
+				if( !$this->isRequired( $col["name"] ) ) $out .= "<OPTION VALUE=\"\">Indéterminé</OPTION>";
+				$out .= "<OPTION VALUE=\"Y\"". ($col["data"] == "Y" ? " SELECTED" : "" ) .">Oui";
+				$out .= "<OPTION VALUE=\"N\"". ($col["data"] == "N" ? " SELECTED" : "" ) .">Non";
+				$out .= "</TD\n";
+				break;
+		}
+		$out .= "  </TR>\n";
+		return $out;
+	}
+
+	function Identity( $col, $mode ) {
+		switch( $mode ){
+			case XMODE_NEW:
+				break;
+
+			default:
+				$out = "    <TD CLASS=xform></STRONG>" 
+						. htmlentities( $col["data"] ) . "</STRONG>"
+						. tag( "INPUT", array( "TYPE"=>"hidden",
+												"NAME"=>$col["name"],
+												"VALUE"=>$col["data"] )) 
+						. "</TD>\n";
+				break;
+
+		}
+		if( $out ){
+			return 	"  <TR CLASS=xform>\n" . $this->description( $col ) . $out . "  </TR>\n";
+		}
+		else return "";
+	}
+
+	function Date( $col, $mode ) {
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		switch( $mode ){
+			case XMODE_READONLY :
+				$out .= tag( "TD", array( "CLASS"=>"xform" ) );
+				$out .= htmlentities( $col["data"] );
+				$out .= tag( "INPUT", array( "TYPE"=>"hidden",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"] ))
+						. "</TD>";
+				break;
+
+			case XMODE_NEW :
+				$col[ "data" ] = "";
+
+			default :
+				$arr = array( "TYPE"=>"text",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"],
+											"MAXLENGTH"=>10,
+											"SIZE"=>10 );
+				$out .= "    <TD CLASS=xform>"
+						. tag( "INPUT", $arr )
+						. "</TD>\n";
+		}
+
+		$out .= "  </TR>";
+		return $out;
+	}
+
+	function Char( $col, $mode ) {
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		switch( $mode ){
+			case XMODE_READONLY :
+				$out .= tag( "TD", array( "CLASS"=>"xform" ) );
+				if( $col[ "http" ] ){
+					$out .= tag( "A", array( "HREF"=>$col["data"], "TARGET"=>"_new" ));
+				}
+				elseif( $col["mail"] ){
+					$out .= tag( "A", array( "HREF"=>"mailto:" . $col["data"] ));
+				}
+
+				$out .= htmlentities( $col["data"] );
+				if( $col[ "http" ] || $col[ "mail" ] ){
+					$out .= tag( "/A" );
+				}
+
+				$out .= tag( "INPUT", array( "TYPE"=>"hidden",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"] ))
+						. "</TD>";
+				break;
+
+			case XMODE_NEW :
+				$col[ "data" ] = "";
+
+			default :
+				$arr = array( "TYPE"=>"text",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"] );
+				if( $col["size"] > 0 ){
+					$arr["MAXLENGTH"] = $col["size"];
+				}
+
+				if( $col["decs"] > 0 ){
+					$arr["SIZE"] = $col["decs"];
+				}
+
+				$out .= "    <TD CLASS=xform>"
+						. tag( "INPUT", $arr )
+						. "</TD>\n";
+		}
+
+		$out .= "  </TR>";
+		return $out;
+	}
+
+	function Percent( $col, $mode ) {
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		$data = $col["data"];
+		switch( $mode ){
+			case XMODE_READONLY :
+				$out .= tag( "TD", array( "CLASS"=>"xform" ) );
+				$out .= "$data&nbsp;%";
+				$out .= tag( "INPUT", array( "TYPE"=>"hidden",
+											"NAME"=>$col["name"],
+											"VALUE"=>$data ))
+						. "</TD>";
+				break;
+
+			default :
+				$arr = array( "TYPE"=>"text",
+											"NAME"=>$col["name"],
+											"VALUE"=>$data );
+				if( $col["size"] > 0 ){
+					$arr["MAXLENGTH"] = $col["size"];
+				}
+
+				if( $col["decs"] > 0 ){
+					$arr["SIZE"] = $col["decs"];
+				}
+
+				$out .= "    <TD CLASS=xform>"
+						. "<TABLE BORDER=0 CELLSPACING=0 CELLPADDING=0><TR><TD>"
+						. tag( "INPUT", $arr ) . "</TD><TD>"
+						. "&nbsp;(en %)</TD></TR></TABLE>"
+						. "</TD>\n";
+		}
+
+		$out .= "  </TR>";
+		return $out;
+	}
+
+	function Integer( $col, $mode ) {
+		$out = "  <TR CLASS=xform>\n" . $this->description( $col );
+		switch( $mode ){
+			case XMODE_READONLY :
+				$out .= tag( "TD", array( "CLASS"=>"xform" ) );
+				if( $col[ "http" ] ){
+					$out .= tag( "A", array( "HREF"=>$col["data"], "TARGET"=>"_new" ));
+				}
+				elseif( $col["mail"] ){
+					$out .= tag( "A", array( "HREF"=>"mailto:" . $col["data"] ));
+				}
+
+				$out .= htmlentities( $col["data"] );
+				if( $col[ "http" ] || $col[ "mail" ] ){
+					$out .= tag( "/A" );
+				}
+
+				$out .= tag( "INPUT", array( "TYPE"=>"hidden",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"] ))
+						. "</TD>";
+				break;
+
+			default :
+				$arr = array( "TYPE"=>"text",
+											"NAME"=>$col["name"],
+											"VALUE"=>$col["data"] );
+				if( $col["size"] > 0 ){
+					$arr["MAXLENGTH"] = $col["size"];
+				}
+
+				if( $col["decs"] > 0 ){
+					$arr["SIZE"] = $col["decs"];
+				}
+
+				$out .= "    <TD CLASS=xform>"
+						. tag( "INPUT", $arr )
+						. "</TD>\n";
+		}
+
+		$out .= "  </TR>";
+		return $out;
+	}
+
+	function display( $col ) {
+		if( $col["readonly" ] ){
+			$mode = XMODE_READONLY;
+		}
+		else {
+			$mode = $this->mode;
+			if( $this->mode == XMODE_DELETE ){
+				$mode = XMODE_READONLY;
+			}
+			else if( ($this->mode == XMODE_NEW) && $this->isKey( $col[ "name" ] ) ){
+				/* $col[ "data" ] = ""; */
+				$GLOBALS[ $col[ "name" ] ] = "";
+			}
+		}
+
+		switch( $col["type"] ){
+			case XTYPE_IDENTITY:
+				echo $this->Identity( $col, $mode );
+				break;
+
+			case XTYPE_COMBO:
+				echo $this->Combo( $col, $mode );
+				break;
+
+			case XTYPE_CHAR:
+				echo $this->Char( $col, $mode );
+				break;
+
+			case XTYPE_INTEGER:
+				echo $this->Integer( $col, $mode );
+				break;
+
+			case XTYPE_PERCENT:
+				echo $this->Percent( $col, $mode );
+				break;
+
+			case XTYPE_MEMO:
+				echo $this->Memo( $col, $mode );
+				break;
+
+			case XTYPE_BOOLEAN:
+				echo $this->Boolean( $col, $mode );
+				break;
+
+			case XTYPE_DATE:
+				echo $this->Date( $col, $mode );
+				break;
+
+			default:
+				echo $this->perror( "Can not display column type " . $col["type"] );
+		}
+	}
+
+	function button_new( ){
+		$arr = array( "NAME"=>"BTN_NEW", "VALUE"=>"Nouveau" );
+		if( $this->imgDir ){
+			$arr[ "TYPE" ] = "IMAGE";
+			$arr[ "SRC" ] = $this->imgDir . "/new.gif";
+		}
+		else{
+			$arr[ "TYPE" ] = "submit";
+		}
+		return tag( "INPUT", $arr );
+	}
+
+	function button_insert( ){
+		return tag( "INPUT", array( "TYPE"=>"submit", "NAME"=>"BTN_INS", "VALUE"=>"Insérer" ) );
+	}
+
+	function button_update( ){
+		$arr = array( "NAME"=>"BTN_UPD", "VALUE"=>"Mise à jour" );
+		if( $this->imgDir ){
+			$arr[ "TYPE" ] = "IMAGE";
+			$arr[ "SRC" ] = $this->imgDir . "/upd.gif";
+		}
+		else{
+			$arr[ "TYPE" ] = "submit";
+		}
+		return tag( "INPUT", $arr );
+	}
+
+	function button_delete( $str = "Etes-vous sûr de vouloir détruire cette fiche?" ) {
+		$arr = array( "NAME"=>"BTN_DEL", "VALUE"=>"Effacer" );
+		if( $this->imgDir ){
+			$arr[ "TYPE" ] = "IMAGE";
+			$arr[ "SRC" ] = $this->imgDir . "/del.gif";
+		}
+		else{
+			$arr[ "TYPE" ] = "submit";
+		}
+
+		if( $str != "" ){
+			$arr[ "OnClick" ] = "return confirm('" . str_replace( "'", "\'", $str ) . "')";
+		}
+		
+		return tag( "INPUT", $arr );
+	}
+
+	function button_reset( ){
+		$arr = array( "CLASS"=>"xform", "TYPE"=>"reset", "VALUE"=>"Annuler" );
+		if( $this->imgDir ){
+			$arr[ "SRC" ] = $this->imgSrc . "/cancel.gif";
+			return "";
+		}
+		return tag( "INPUT", $arr );
+	}
+
+	function buttons( ){
+		$sep = "&nbsp;";
+		$button = "";
+		switch( $this->mode ){
+			case XMODE_NEW:
+				if( $this->isAuthorized( XMODE_INSERT ) ) $button .= $sep . $this->button_insert();
+				$button .= $sep . $this->button_reset( );
+				break;
+
+			case XMODE_DELETE:
+				if( $this->isAuthorized( XMODE_INSERT ) ) $button .= $sep . $this->button_new();
+				break;
+
+			case XMODE_UPDATE:
+			case XMODE_INSERT:
+			case XMODE_READWRITE:
+				if( $this->isAuthorized( XMODE_INSERT ) ) $button .= $sep . $this->button_new();
+				if( $this->isAuthorized( XMODE_UPDATE ) ) $button .= $sep . $this->button_update();
+				if( $this->isAuthorized( XMODE_DELETE ) ) $button .= $sep . $this->button_delete($this->delText);
+				$button .= $sep . $this->button_reset( );
+				break;
+
+		}
+		return substr( $button, strlen( $sep ) );
+	}
+
+	function isAuthorized( $mode ){
+		if( strchr( $this->droits, "X" ) ){
+			return TRUE;
+		}
+
+		switch( $mode ){
+			case XMODE_INSERT:
+			case XMODE_NEW:
+				return strchr( $this->droits, "I" );
+			case XMODE_UPDATE:
+				return strchr( $this->droits, "U" );
+			case XMODE_DELETE:
+				return strchr( $this->droits, "D" );
+			case XMODE_READONLY:
+				return true;
+			case XMODE_READWRITE:
+				return strchr( $this->droits, "S" );
+			default :
+				return false;
+		}
+	}
+
+	function sqldata( $key ){
+		$col = $this->cols[ $key ];
+		$data = $col["data"]; // Raccourci!
+		switch( $col["type"] ){
+			case XTYPE_CHAR :
+			case XTYPE_COMBO :
+			case XTYPE_MEMO :
+				if( $col["mail"] ){
+					if( !strncmp( $data, "mailto:", 7 ) ){
+						$data = substr( $data, 7 );
+						$this->cols[$key]["data"] = $data;
+					}
+				}
+				return sqlstr( $data );
+
+			case XTYPE_BOOLEAN :
+				switch( $col["data"] ){
+					case 'Y' : return "'Y'";
+					case 'N' : return "'N'";
+					default: return "NULL";
+				}
+				break;
+
+			case XTYPE_PERCENT :
+				if( $data == "" ){
+					return "NULL";
+				}
+				return $data / 100.0;
+				break;
+
+			case XTYPE_INTEGER :
+				if( $col["data"] == "" ){
+					return "NULL";
+				}
+				return $col["data"];
+				break;
+
+			case XTYPE_DATE :
+				$data = date2ts( $data );
+				return sqldate( $data );
+
+			default :
+				return $col["data"];
+		}
+	}
+
+	function error( $err )
+	{
+		global $DEBUG;
+		if( !$DEBUG ){
+			echo "\n<!--\n $err\n-->\n";
+		}
+		else {
+			echo "<FONT COLOR=red>". htmlentities( $err ) . "</FONT><br>\n";
+		}
+	}
+
+	function select( ){
+		$col_list = $where_list = "";
+		reset( $this->cols );
+		while ( list( $key, $col ) = each( $this->cols ) ) {
+
+			if( $col_list ) $col_list .= ", ";
+
+			$col_list .= $key;
+			if ($this->isKey( $key )) {
+				$where_list .= ($where_list == "" ? " WHERE " : " AND " )
+								. $key . " = "
+								. $this->sqldata( $key );
+			}
+		}
+		$query = "SELECT " . $col_list 
+					. " FROM " . $this->tableName
+					. $where_list;
+
+		$cols = sql_onerow( $query );
+		if( !$cols ) {
+			echo $this->error( "SQL(xform::select): $query" );;
+			return false;
+		}
+
+		/*	Récupération	*/
+		$row = array();
+		$i = 0;
+		reset( $this->cols );
+		while ( list( $key, $col ) = each($this->cols) ) {
+			$row[ $key ] = trim( $cols[ $i++ ] );
+			$data = $row[ $key ];
+			switch( $this->cols[$key]["type"] ){
+				case XTYPE_PERCENT:
+					$data = $data * 100.0;
+					break;
+			}
+			$this->cols[$key][ "data" ] = $data;
+		}
+			
+		return $row;
+	}
+
+
+	function insert( )
+	{
+		$col_list = $data_list = "";
+		reset( $this->cols );
+		while ( list( $key, $col ) = each( $this->cols )) {
+			$v = $this->sqldata( $key );
+
+			if ($col[ "type" ] == XTYPE_IDENTITY ) {
+				$seq = $key;
+			}
+			elseif( strcmp( $v, "NULL" ) ) {
+				if ($col_list != "") {
+					$col_list .= ", ";
+					$data_list .= ", ";
+				}
+				$col_list .= $key;
+				$data_list .= $v;
+			}
+		}
+
+		$query = sprintf( "INSERT INTO %s (%s) VALUES (%s)", 
+						$this->tableName,
+						$col_list,
+						$data_list );
+
+		if (!sql_execute( $query )) {
+			$this->error( "SQL(xform::insert): $query" );
+			return false;
+		}
+
+		if ($seq) {
+			$id = sql_lastid( $this->tableName . ".$seq" );
+			// echo "ID=$id - ". $this->tableName . ".$seq" ;
+			$this->cols[ $seq ][ "data" ] = $id;
+		}
+		return true;
+	}
+
+	/*	Efface l'enregistrement en base */
+	function delete( )
+	{
+		$where_list = "";
+		reset( $this->cols );
+		while ( list( $key, $val ) = each($this->cols) ) {
+			if( $this->isKey( $key ) ) {
+				$where_list .= ($where_list == "" ? " WHERE " : " AND " );
+				$where_list .= $key . " = " . $this->sqldata( $key );
+			}
+		}
+		$query = sprintf( "DELETE FROM %s %s", $this->tableName, $where_list );
+	
+		if (!sql( $query )) {
+			$this->error( "SQL: $query" );
+			return false;
+		}
+
+		/* Ca y est, il est mort l'enregistrement!!! */
+		return true;
+	}
+
+	
+	function update()
+	{
+		$where_list =  $data_list = "";
+		reset( $this->cols );
+		while ( list( $key, $val ) = each($this->cols) ) {
+			$col_list .= $key;
+			if ($this->iskey( $key )) {
+				$where_list .= ($where_list == "" ? " WHERE " : " AND " );
+				$where_list .= sprintf( "%s = %s", $key, $this->sqldata( $key ) );
+			}
+			else {
+				$data_list .= ($data_list == "" ? " SET " : ", " );
+				$data_list .= $key . " = " . $this->sqldata( $key );
+			}
+		}
+		$query = "UPDATE " . $this->tableName . $data_list . $where_list;
+		if (!sql( $query )) {
+			echo $this->error( "SQL: $query" );
+			return false;
+		}
+	
+		return true;
+	}
+	
+
+
+	function initRecord( ){
+		$ok = false;
+		switch( $this->mode ){
+			case XMODE_UPDATE:
+				$ok = $this->checkAllData();
+				$ok = $ok && $this->update();
+				break;
+
+			case XMODE_READONLY:
+			case XMODE_READWRITE:
+				if( !$this->select() ){
+					$this->addError( "L'enregistrement est introuvable en base." );
+				}
+				else {
+					$ok = true;
+				}
+				break;
+
+			case XMODE_INSERT:
+				if( $this->isAuthorized( XMODE_INSERT ) ){
+					$ok = $this->checkAllData();
+					$ok = $ok && $this->insert();
+				}
+				break;
+
+			case XMODE_DELETE:
+				if( $this->isAuthorized( XMODE_DELETE ) ){
+					$ok = $this->delete();
+				}
+				break;
+
+			case XMODE_NEW:
+				$ok = $this->isAuthorized( XMODE_INSERT );
+				break;
+		}
+		if( !$ok ){
+			$this->error( "Can not initialize the record." );
+		}
+		return $ok;
+	}
+
+	function guessMode(){
+		global $BTN_NEW;
+		if( $BTN_NEW ) return XMODE_NEW;
+		$mode = XMODE_NEW;
+		reset( $this->cols );
+		while( list( $colname, $col ) = each( $this->cols ) ){
+			if( $this->isKey( $colname ) && $col[ "data" ] ){
+				$mode = ($this->isAuthorized( XMODE_UPDATE ) ? XMODE_READWRITE : XMODE_READONLY);
+			}
+		}
+		return $mode;
+	}
+
+	/*	Displays a <FORM> */
+	function runIt(){
+		if( !$this->mode ){
+			$this->mode = $this->guessMode();
+		}
+
+		if( !$this->initRecord() ){
+			$this->displayErrors( );
+		}
+
+		echo tag( "FORM" );
+		echo tag( "TABLE", array( "CLASS"=>"form", "BORDER"=>0 ) );
+		reset( $this->cols );
+		while( list($name, $col) = each( $this->cols ) ){
+			$this->display( $col );
+		}
+		printf( "  <TR><TH></TH><TD>%s</TD></TR>\n", $this->buttons() );
+		echo tag( "/table" );
+		echo tag( "/FORM" );
+	}
+}
+
+function make_form( $arr, $action = "" )
+{
+	if( !$action ) $action = $GLOBALS[ 'PHP_SELF' ];
+	echo "<form method='get' action='$action'>\n";
+	echo "  <table>\n";
+	foreach( $arr as $key => $values ){
+		$value = $_REQUEST[ $key ];
+		$subarray = explode( '|', $values );
+		list( $libelle, $type, $defval, $params ) = $subarray;
+		if( !$defval ){
+			!$defval = $_REQUEST[ $key ];
+		}
+		echo "    <tr>\n";
+		echo "      <th class='input'>$libelle</th>\n";
+		echo "      <td class='input'>";
+		$tags = array();
+		$tags[ 'name' ] = $key;
+		if( $params ){
+			$alltags = split( ';', $params );
+			foreach( $alltags as $simpletag ){
+				list( $k, $v ) = explode( '=', $simpletag, 2 );
+				$tags[ $k ] = $v;
+			}
+		}
+		if( $type === "text" || $type === "password" ){
+			$tags[ 'value' ] = htmlspecialchars( $defval );
+			echo tag( "input", $tags );
+		}
+		else if( $type === "select" ){
+			$options = explode( ';', $defval );
+			echo tag( "select", $tags );
+			foreach( $options as $opt ){
+				list( $k, $v ) = explode( ':', $opt, 2 );
+				$selected = (($k === $value) ? " SELECTED" : "");
+				echo "  <option value='$k'$selected>$v</option>\n";
+			}
+			echo "</select>\n";
+		}
+		else if( $type === "textarea" ){
+			echo tag( "textarea", $tags );
+			echo htmlspecialchars( $defval );
+			echo tag( "/textarea" );
+		}
+		echo "</td>\n";
+	    echo "    </tr>\n";
+	}
+	echo "    <tr>\n";
+	echo "      <td class='input'></td>\n";
+	echo "      <td class='input'><input type='image' name='submit' value='OK' src='/img/btn/ok.jpg'></td>\n";
+	echo "    </tr>\n";
+	echo "  </table>\n";
+	echo "</form>\n";
+}
+
+?>

@@ -1,0 +1,216 @@
+<?php
+
+/*
+ *	Fichier:	list
+ *	Date:		05/1999
+ *
+ */
+
+class sqllist {
+
+	var $rec_by_page;
+
+	function sqllist( $name, $query )
+	{
+		$this->name = $name;
+		$this->query = $query;
+
+		$this->res = sql( $query );
+		if (!$this->res) {
+			echo "<!-- Erreur SQL:\n$query\n-->\n";
+		}
+		$this->rec_loaded = 0;
+		$this->rec_by_page = 10;
+		$this->end_of_list = false;
+		$this->nb_lines = -1;
+	}
+
+
+	function init( )
+	{
+		//	Vider le buffer avant opération SQL
+		flush();
+
+		if ($GLOBALS[ $this->name ]) {
+			$data = split( " ", $GLOBALS[ $this->name ] );
+			$this->rec = $data[0];
+			$this->nb_lines = $data[1];
+		}
+		else {
+			$this->rec = 0;
+			$rows = sql_all( $this->query );
+			$this->nb_lines = count( $rows );
+		}
+
+		for ($i=0; $i < $this->rec; $i++) {
+			$row = db_fetch_row($this->res);
+		}
+	}
+
+
+	function next()
+	{
+		if ($this->rec_loaded >= $this->rec_by_page) {
+			return false;
+		}
+		$this->rec_loaded++;
+		$row = db_fetch_row($this->res);
+		if (!$row) $this->end_of_list = true;
+		return $row;
+	}
+
+
+	function add_vars( )
+	{
+		global $HTTP_GET_VARS;
+		global $HTTP_POST_VARS;
+
+		if (is_array( $HTTP_GET_VARS )) $lst_vars = $HTTP_GET_VARS;
+		if (is_array( $HTTP_POST_VARS )) $lst_vars = $HTTP_POST_VARS;
+
+		$str = "";
+		reset( $lst_vars );
+		while (list( $key, $val ) = each( $lst_vars )) {
+			if ($key != $this->name) {
+				$str .= "&" . $key . "=" . urlencode( $val );
+			}
+		}
+		return $str;
+	}
+
+
+	function href_rec( $i, $txt )
+	{
+		global $PHP_SELF;
+
+		if ($i > $this->nb_lines) return "";
+
+		$href = $PHP_SELF . "?" . $this->name . "=";
+		$href .= urlencode(
+			$i
+			. " " . bcadd( $this->nb_lines, 0, 0 )
+			);
+		$href .= $this->add_vars();
+		return "<A" . mk_attrib( "HREF", $href) . ">" . $txt . "</A>";
+	}
+
+	function href_prev( $txt )
+	{
+		global $PHP_SELF;
+
+		if ($this->rec == 0) return "";
+
+		$href = $PHP_SELF . "?";
+		if ($this->rec < $this->rec_by_page) $this->rec = $this->rec_by_page;
+		$href .= $this->name . "=";
+		$href .= urlencode( 
+			bcsub( $this->rec, $this->rec_by_page , 0) 
+			. " " . bcadd( $this->nb_lines, 0, 0 )
+			);
+		$href .= $this->add_vars();
+		
+		return "<A" . mk_attrib( "HREF", $href) . ">" . $txt . "</A>";
+	}
+
+
+	function href_next( $txt )
+	{
+		global $PHP_SELF;
+		global $HTTP_GET_VARS;
+
+		if ($this->end_of_list
+				|| $this->rec_by_page + $this->rec >= $this->nb_lines) {
+			//	Fin des enregistrements
+			return "";
+		}
+
+		$href = $PHP_SELF . "?";
+		$href .= $this->name . "=";
+		$href .= urlencode( 
+			bcadd( $this->rec, $this->rec_by_page , 0) 
+			. " " . bcadd( $this->nb_lines, 0, 0 )
+			);
+
+		$href .= $this->add_vars();
+
+		return "<A" . mk_attrib( "HREF", $href) . ">" . $txt . "</A>";
+	}
+
+
+	function href_by_page()
+	{
+		$i=0;
+		$page = 1;
+		$str = "";
+		while ($i < $this->nb_lines) {
+			if ($page > 1) {
+				$str .= " | ";
+			}
+			if ($i == $this->rec) {
+				$str .= bcadd( $page, 0, 0 ) ; 
+			}
+			else {
+				$str .= $this->href_rec( $i, bcadd( $page, 0, 0 ) ); 
+			}
+			$i += $this->rec_by_page;
+			$page++;
+		}
+		return $str;
+	}
+
+	function graphical_href( $bgcolor = "red", $textcolor = "#ffffff" )
+	{
+		$i= 0;
+		$page = 1;
+
+		echo "\n" .
+			"<DIV ALIGN=center>\n" .
+			"<TABLE BORDER=1 CELLSPACING=0 CELLPADDING=3>\n" .
+			"  <TR>";
+
+		if ($this->rec == 0) {
+			echo "<TD><IMG SRC=\"images/spacer.gif\"></TD>";
+		}
+		else {
+			echo "<TD>" .
+				$this->href_rec( $this->rec - $this->rec_by_page, 
+						"<IMG SRC=\"images/arrow_prev.gif\" BORDER=0>" ) .
+				"</TD>";
+		}
+
+		$str = "";
+		while ($i < $this->nb_lines) {
+			if ($i == $this->rec) {
+				echo "<TD" . mk_attrib( "BGCOLOR", $bgcolor ) . ">" .
+					"<FONT" .  mk_attrib( "COLOR", $textcolor ) . ">" 
+					. "<B>" . $page . "</B></FONT></TD>"; 
+			}
+			else {
+				echo "<TD><B>";
+				echo $this->href_rec( $i, bcadd( $page, 0, 0 ) ); 
+				echo "</B></TD>";
+			}
+			$i += $this->rec_by_page;
+			$page++;
+		}
+
+		if ($this->rec + $this->rec_by_page >= $this->nb_lines) {
+			echo "<TD><IMG SRC=\"images/spacer.gif\"></TD>";
+		}
+		else {
+			echo "<TD>" . $this->href_rec( $this->rec + $this->rec_by_page, "<IMG SRC=\"images/arrow_next.gif\" BORDER=0>" ) . "</TD>";
+		}
+
+		echo "  </TR>\n" .
+			"</TABLE>" .
+			"</DIV>";
+	}
+
+	function done()
+	{
+    	db_free_result($this->res);
+	}
+
+};
+
+?>

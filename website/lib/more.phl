@@ -1,0 +1,561 @@
+<?php
+
+/*
+ *	Fichier:	more.phl
+ *	Auteur:		William Rey
+ *	Date:		06/1999
+ *	Version:	1.01
+ *
+ *	Description:
+ *	------------
+ *	Routines de bases complémentaires pour PHP v3.
+ *
+ *	Fonctions:
+ *	----------
+ *	tag(): Retourne un tag HTML complet
+ *
+ *
+ */
+
+
+/* ------------------------------------------------------------------------ */
+/*                                                                          */
+/*                               FUNCTIONS                                  */
+/*                                                                          */
+/* ------------------------------------------------------------------------ */
+
+
+/*
+ *	tag()
+ *	=====
+ *	Création d'un tag complet HTML.
+ *
+ *	$name: Nom du tag (IMG, A, etc...)
+ *	$attribs: Tableau clé/valeur contenant les données informatives du
+ *		tag. Lorsque la clé n'est pas renseignée, seule la valeur est
+ *		utilisée par la fonction.
+ *
+ *	Exemple:
+ *	--------
+ *	tag( "option", array( "VALUE" => "10", "SELECTED" ))
+ *	retourne:
+ *	<OPTION VALUE="&lt;10" SELECTED>
+ *
+ */
+
+function mk_attrib( $key, $val = false )
+{
+		if (!is_integer( $key )) {
+			$at = " " . $key . "=";
+			if (is_integer( $val)) {
+				$at .= $val;
+			}
+			else {
+				$at .= "\"" . str_replace( "\"", "&quote;", $val ) . "\"";
+			}
+			return $at;
+		}
+		else {
+			return " " . strtoupper( $val );
+		}
+}
+
+function tag( $name, $attribs = false )
+{
+	$list = "";
+	if (!$attribs) $attribs = array();
+	reset( $attribs );
+	while (list($key, $val ) = each( $attribs )) {
+		$list .= mk_attrib( $key, $val );
+	}
+	if( substr( $name, -1, 1 ) == '/' ){
+		// XML notation!
+		return "<" . substr( $name, 0, -1 ) . $list . " />";
+	}
+	else {
+		return "<" . $name . $list . ">";
+	}
+}
+
+
+/*
+ *	imgtag()
+ *	========
+ *	Permet d'afficher une image GIF, JPG ou PNG en intégrant automatiquement
+ *	sa taille dans le tag. Ceci permet une accélération de l'affichage
+ *	dans des navigateurs tels Netscape.
+ *
+ *	$src: Nom de l'image sur le disque local. Ce fichier doit
+ *		IMPERATIVEMENT exister sur le disque.
+ *
+ *	$attribs (optionnel): Tableau de données complémentaires (alignement, etc.).
+ *
+ */
+
+$_img_size = array();
+
+function imgtag( $info, $attribs = false )
+{
+	global $DOCUMENT_ROOT;
+	global $_img_size;
+
+	$arr = explode( "|", $info );
+	list( $src, $alt, $href ) = $arr;
+	if (!$attribs) $attribs = array();
+
+	$attribs[ "SRC" ] = $src;
+	if (substr( $src, 0, 1 ) == "/") {
+		$src = $DOCUMENT_ROOT . $src;
+	}
+
+	$attribs[ "ALT" ] = $alt;
+
+	if( !$_img_size[ $src ] ) {
+		if( file_exists( $src ) ){
+			$size = GetImageSize( $src );
+			if (!$attribs[ "WIDTH" ]) {
+				$attribs[ "WIDTH" ] = $size[0];
+			}
+			if (!$attribs[ "HEIGHT" ]) {
+				$attribs[ "HEIGHT" ] = $size[1];
+			}
+			$_img_size[ $src ] = 1;
+		}
+		else {
+			return "<FONT COLOR=red>&lt; IMG SRC=\"$src\"&gt;</FONT>";
+		}
+	}
+
+	if (!$attribs[ "BORDER" ]) $attribs[ "BORDER" ] = 0;
+	if ($href) {
+		$lst = explode( "#", $href );
+		$arr = array();
+		$arr[ "HREF" ] = $lst[0];
+		if ($lst[1]) {
+			$arr[ "OnMouseOver" ] = "window.status='" 
+											. str_replace( "'", "\'", $lst[1] ) 
+											. "'; return true;";
+			$arr[ "OnMouseOut" ] =  "window.status=''; return true;";
+		}
+		if ($lst[2]) {
+			$arr[ "TARGET" ] = $lst[2];
+		}
+		return tag( "A" , $arr )
+				. tag( "IMG", $attribs )
+				. "</A>";
+	}
+	return tag( "IMG", $attribs );
+}
+
+
+/*
+ *	print_error()
+ *	-------------
+ *	Affichage d'un texte d'erreur.
+ *
+ */
+
+function print_error( $err, $mess = "" )
+{
+	if ($err == "") {
+		//	Succès: afficher le message.
+		echo tag ( "FONT", array( "COLOR"=>"#0000ff" ));
+		echo $mess;
+		echo "</font>";
+		return;
+	}
+	$err = htmlspecialchars( $err );
+	$fonte = tag( "FONT", array( "FACE" => "Verdana", "SIZE"=>-1, "COLOR"=>"#ff0000" ));
+	$arr = explode( "\n", $err );
+?>
+
+  <TABLE>
+    <TR ALIGN=left VALIGN=top>
+      <TD><STRONG><? echo $fonte; if (count( $arr ) > 2) echo "Erreurs:"; else echo "Erreur:"; ?></STRONG></TD>
+<?
+	while (list( $key, $val ) = each( $arr )) {
+		if ($val != "") {
+			if ($key) echo "    <TR><TD></TD>\n";
+			echo "      <TD>" . $fonte . $val . "</FONT></TD>\n";
+			if ($key) echo "    <TR>\n";
+		}
+	}
+?>
+    </TR>
+  </TABLE>
+<?
+}
+
+
+/*
+ *	classe TABLE
+ *	------------
+ *	Cette classe est destinée à aider à la construction de
+ *	tables HTML.
+ *
+ */
+
+class table {
+	var $bgcolor;
+	var $cellspacing;
+	var $cellpadding;
+	var $align;
+	var $row;
+	var $width;
+
+	function table() {
+		$this->align = "center";
+		$this->bgcolor = "";
+		$this->cellspacing = 0;
+		$this->cellpadding = 2;
+		$this->row = 0;
+		$this->thcolor = "#e0ffe0";
+		$this->bgcolor0 = "#f0f0f0";
+		$this->bgcolor1 = "#e0e0e0";
+		$this->colonnes = array();
+		$this->texte_zero = "Aucune ligne ne correspond à la sélection";
+		$this->class = "";
+	}
+
+	function init() {
+		if ($this->bgcolor) $a["BGCOLOR"] = $this->bgcolor;
+		if ($this->align) $a["ALIGN"] = $this->align;
+		if ($this->cellspacing) $a["CELLSPACING"] = $this->cellspacing;
+		if ($this->cellpadding) $a["CELLPADDING"] = $this->cellpadding;
+		if ($this->width) $a[ "WIDTH" ] = $this->width;
+		if ($this->class) $a[ "CLASS" ] = $this->class;
+		return "\n" . tag( "TABLE", $a ) . "\n";
+				
+	}
+
+	function tr_title() {
+		$this->row = 0;
+		return "  " . tag( "tr", array( "BGCOLOR" => $this->thcolor ));
+	}
+
+	function tr() {
+		$this->row++;
+		$color = ($this->row % 2 == 0 ? $this->bgcolor0 : $this->bgcolor1 );
+		return "  </tr>\n  " . tag( "tr", array( "BGCOLOR" => $color ));
+	}
+
+	function thead( $nomcol, $width = 40 ) {
+		$this->colonnes[] = $nomcol;
+		$arr = array( "width" => $width );
+		if( $this->class ) $arr[ "CLASS" ] = $this->class;
+		$str = tag( "th", $arr ) 
+				. htmlspecialchars( $nomcol )
+				. "</th>";
+		return $str;
+	}
+
+
+	function tcell2( $data, $href = "", $info = "" ) {
+		$arr = array();
+		$str = $data;
+
+		if ($href) {
+			$hrefs = explode( "|", $href );
+			$str = ref( $hrefs[0], $hrefs[1] ) . $str . "</a>";
+		}
+
+		if (eregi( "right", $info )) $arr[ "ALIGN" ] = "right";
+		if (eregi( "left", $info )) $arr[ "ALIGN" ] = "left";
+		if (eregi( "center", $info )) $arr[ "ALIGN" ] = "center";
+		if( $this->class ) $arr[ "CLASS" ] = $this->class;
+		if (eregi( "strong", $info )) {
+			$str = "<strong>" . $str . "</strong>";
+		}
+
+		return tag( "td", $arr ) . $str . "</td>\n" ;
+	}
+
+
+	function tcell( $data, $href = "", $info = "" ) {
+		return $this->tcell2( htmlspecialchars( $data ), $href, $info );
+	}
+
+
+	function done()
+	{
+		echo "  </tr>\n" ;
+		if ($this->row == 0) {
+			echo "<tr>"
+				. tag( "td", array( 
+								"align" => "center",
+								"COLSPAN" => sizeof( $this->colonnes ),
+								"BGCOLOR" => "#ffd0d0" ))
+				. "<strong>" . $this->texte_zero . "</strong>"
+				. "</td></tr>"; 
+		}
+		echo tag( "/table" ) . "\n";
+	}
+}
+
+function refclass( $class, $page, $desc = "", $target = false )
+{
+	$arr[ "CLASS" ] = $class;
+	return ref( $page, $desc, $target, $arr );
+}
+
+function ref( $page, $desc = "", $target = false, $arrin = false )
+{
+	$arr = (is_array( $arrin ) ? $arrin : array() );
+	$arr[ "HREF" ] = $page;
+
+	if ($target) $arr[ "TARGET" ] = $target;
+
+	if ($desc != "") {
+			$arr[ "OnMouseOver" ] = "window.status='" 
+										. str_replace( "'", "\'", $desc ) 
+										. "'; return true;";
+			$arr[ "OnMouseOut" ] =  "window.status=''; return true;";
+	}
+	return tag( "A", $arr );
+}
+
+function err_text( $txt )
+{
+	echo "\n\n<font color=#ff0000 face=\"Verdana,Arial,Helvetica\">";
+	echo htmlspecialchars( $txt );
+	echo "</font>\n";
+}
+
+
+
+function ts2date( $ts, $fmt )
+{
+	$Month[ 1 ] = "janvier";
+	$Month[ 2 ] = "février";
+	$Month[ 3 ] = "mars";
+	$Month[ 4 ] = "avril";
+	$Month[ 5 ] = "mai";
+	$Month[ 6 ] = "juin";
+	$Month[ 7 ] = "juillet";
+	$Month[ 8 ] = "août";
+	$Month[ 9 ] = "septembre";
+	$Month[ 10 ] = "octobre";
+	$Month[ 11 ] = "novembre";
+	$Month[ 12 ] = "décembre";
+	$Weekday[0] = "dimanche";
+	$Weekday[1] = "lundi";
+	$Weekday[2] = "mardi";
+	$Weekday[3] = "mercredi";
+	$Weekday[4] = "jeudi";
+	$Weekday[5] = "vendredi";
+	$Weekday[6] = "samedi";
+
+	$str = "";
+	for ($i=0; $i < strlen( $fmt ); $i++) {
+		$c = substr( $fmt, $i, 1 );
+		if ( $c == "%" ) {
+			$c = substr( $fmt, ++$i, 1 );
+			switch( $c ) {
+				case 'd' :	// Day: 00-31
+					$str .= date( "d", $ts );
+					break;
+				case 'H' :	// Hour: 00-23
+					$str .= date( "H", $ts );
+					break;
+				case 'M' :	// Minutes: 00-59
+					$str .= date( "i", $ts );
+					break;
+				case 'm' :	// Month: 01-12
+					$str .= date( "m", $ts );
+					break;
+				case 'y' :	// Year (without century)
+					$str .= date( "y", $ts );
+					break;
+				case 'Y' :	// Year (with century)
+					$str .= date( "Y", $ts );
+					break;
+
+				case 'S' :	// Seconds: 00-59
+					$str .= date( "s", $ts );
+					break;
+
+				case 'B' :
+					$str .= $Month[ date( "n", $ts ) ];
+					break;
+
+				case 'A' :
+					$str .= $Weekday[ date( "w", $ts ) ];
+					break;
+
+				default :
+					$str .= "?$c?";
+					break;
+			}
+		}
+		else {
+			$str .= $c;
+		}
+	}
+	return $str;
+}
+
+function iso2ts( $date )
+{
+	if (ereg( "^([0-9]{4}).*([0-9]{1,2}).*([0-9]{1,2}).*([0-9]{1,2}).*([0-9]{1,2}).*([0-9]{1,2})", $date, $reg )) {
+		return mktime( $reg[4], $reg[5], $reg[6], $reg[2], $reg[3], $reg[1] );
+	}
+	return -1;
+}
+
+function iso2date( $d, $fmt )
+{
+	return ts2date( iso2ts( $d ), $fmt );
+}
+
+function time2seconds( $t )
+{
+	$arr = explode( ":", $t );
+	$sec = ($arr[0] * 3600) + ($arr[1] * 60) + $arr[2];
+	return $sec;
+}
+
+
+function time_without_zero( $t )
+{
+	$str = ereg_replace( "[0:]*(.*)([0-9]\:[0-9][0-9])", "\\1\\2", $t );
+	return $str;
+}
+
+
+function seconds2time( $t )
+{
+	$arr[0] = ($t / 3600);
+	$arr[1] = ($t / 60) % 60;
+	$arr[2] = ($t % 60);
+	$str = sprintf( "%02d:%02d:%02d", $arr[0], $arr[1], $arr[2] );
+	return $str;
+}
+
+function head( $title, $level = 2 )
+{
+	return "<h$level>" . htmlspecialchars( $title ) . "</h$level>\n";
+}
+
+// More, more and More (by Carmel...)
+
+function IsNumeric( $v )
+{
+	return ereg( "^[0-9]+$", trim( $v ) );
+}
+
+function redirect( $page )
+{
+	$page = "Location: " . $page;
+	header( $page );
+	sleep( 1 );
+	exit;
+}
+
+
+
+function hidden( $var )
+{
+	$data = $GLOBALS[ $var ];
+	echo tag( "input", array( "type"=>"hidden", "name"=>$var, "value"=>$data ));
+}
+
+function date2ts( $date )
+{
+	if (ereg( "^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})", $date, $reg )) {
+		/*	Date au mode ISO	*/
+		$date = mktime( 0, 0, 0, $reg[2], $reg[3], $reg[1] );
+	}
+	else if (ereg( "^([0-9]{1,2})\/([0-9]{1,2})\/([0-9]{2,4}) *([0-9]{1,2})[hH:]([0-9]{1,2})", $date, $reg )) {
+		$date = mktime( $reg[4], $reg[5], 0, $reg[2], $reg[1], $reg[3] );
+	}
+	else if (ereg( "^([0-9]{1,2})\/([0-9]{1,2})\/([0-9]{2,4})", $date, $reg )) {
+		$date = mktime( 0, 0, 0, $reg[2], $reg[1], $reg[3] );
+	}
+	else {
+		$date = -1;
+	}
+	return $date;
+}
+
+
+function to_date( $date )
+{
+	return date2ts( $date );
+}
+
+function is_valid_email( $email ){
+	return eregi( "^[-_0-9A-Z.]*@[-0-9A-Z.]*[.][A-Z]*$", $email );
+}
+
+function cutString( $str, $len = 72, $justified = false ){
+	$chaine = "";
+	$arr = explode( "\n", $str );
+
+	while( list( $k, $v ) = each( $arr ) ){
+		$arr2 = explode( " ", $v );
+
+		$curr = "";
+		while( list( $k, $v ) = each( $arr2 ) ){
+
+			if( strlen( $curr ) + strlen( $v ) < $len ){
+				$curr .= $v . " ";
+			}
+			else {
+				$curr = trim( $curr );
+				if( $justified ){
+					do{
+						$ok = false;
+						for( $i=0; $i < strlen( $curr ) && strlen( $curr ) < $len; $i++ ){
+							if( substr( $curr, $i, 1 ) == ' ' ){
+								$ok = true;
+								$curr = substr( $curr, 0, $i + 1 ) . substr( $curr, $i );
+								$i++;
+							}
+						}
+					} while( $ok && strlen( $curr ) < $len );
+
+				}
+				$chaine .= "$curr\n";
+				$curr = "$v ";
+			}
+		}
+		$chaine .= $curr . "\n";
+	}
+	return $chaine;
+}
+
+function sql_combo( $name, $req, $def = false, $first = false, $arr = false )
+{
+	if( !$arr ) $arr = array();
+	$arr["NAME"] = $name;
+	$rows = sql_all( $req );
+	$ret = tag( "SELECT", $arr ) . "\n";
+	if( $first ){
+		$ret .= "  <OPTION VALUE=\"\">$first\n";
+	}
+	foreach( $rows as $k => $row ){
+		list( $k, $v ) = $row;
+		$selected = ( $def && !strcmp( $def, $k ) ) ? " SELECTED" : "";
+		$ret .= "  <OPTION VALUE=\"$k\"$selected>$v\n";
+	}
+	$ret .= "</SELECT>\n";
+	return $ret;
+}
+
+function debug( $texte ){
+	echo "<!-- $texte -->";
+}
+
+function not_null( $str ){
+	return is_null( $str  ) ? "" : $str;
+}
+
+function trunc_text( $texte, $limit = 50 )
+{
+	$len = strlen( $texte );
+	if( $len > $limit + 5 ){
+		$texte = substr( $texte, $limit ) . "...";
+	}
+	return $texte;
+}
+?>

@@ -1,0 +1,256 @@
+<?php // -*- C++ -*-
+/*
+ * $Id: db-msql.phl,v 1.0 1998/10/01 18:41:56 ssb Exp $
+ */
+
+$db_error_code = 0;
+$db_error_msg = false;
+$db_error_source = false;
+
+$DB_NOW = " NOW() ";
+
+/**
+ * @function db_connect
+ * @purpose Connect to a database
+ * @desc
+ *   Connects to a database and returns and identifier for the connection.
+ * @arg database
+ *   Data source name or database host to connect to.
+ * @arg user
+ *   Name of user to connect as.
+ * @arg password
+ *   The user's password.
+ */
+function db_connect($dsn, $user, $password)
+{
+    $ret = @mysql_pconnect( $dsn, $user, $password );
+    if (!$ret) {
+		db_check_errors($php_errormsg);
+		echo "<!-- CAN NOT CONNECT TO mySQL: $dsn/$user/$password -->";
+		return false;
+    }
+    return $ret;
+}
+
+/*
+ * Function: db_query
+ * Arguments: $conn (int)     - connection identifier
+ *            $query (string) - SQL statement to execute
+ * Description: executes an SQL statement
+ * Returns: (int) 0 - query failed
+ *                1 - query succeeded
+ */
+function db_query($conn, $query)
+{
+	global $db_user;
+	global $db_fields;
+	global $db_lastid;
+	global $sql_last_error;
+
+    $ret = mysql_query( $query, $conn );
+    if (!$ret) {
+		$sql_last_error = mysql_errno( $conn ) . " - " . mysql_error( $conn );
+		db_check_errors($php_errormsg);
+		return false;
+    }
+	$db_lastid = mysql_insert_id( $conn );
+	$db_fields = array();
+	if( !strcasecmp( substr( $query, 0, 7 ), "SELECT " ) ){
+		for( $i=0; $i < mysql_num_fields( $ret ); $i++ ){
+			$db_fields[] = mysql_field_name( $ret, $i );
+		}
+	}
+    return $ret;
+}
+
+/*
+ * Function: db_fetch_row
+ * Arguments: $result (int)   - result identifier
+ * Description: Returns an array containing data from a fetched row.
+ * Returns:   false - error
+ *          (array) - returned row
+ */
+function db_fetch_row($result)
+{
+    $row = mysql_fetch_row($result);
+    if (!$row) {
+        db_check_errors($php_errormsg);
+        return false;
+    }
+	return $row;
+}
+
+
+/*
+ * Function: db_fetch_array
+ * Arguments: $result (int)   - result identifier
+ * Description: Returns an array containing data from a fetched row.
+ * Returns:   false - error
+ *          (array) - returned row
+ */
+function db_fetch_array($result)
+{
+    $row = mysql_fetch_array($result);
+    if (!$row) {
+        db_check_errors($php_errormsg);
+        return false;
+    }
+    return $row;
+}
+
+
+/*
+ * Function: db_free_result
+ * Arguments: $result (int)   - result identifier
+ * Description: Frees all memory associated with a result identifier.
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_free_result($result)
+{
+    $ret = mysql_free_result($result);
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+/*
+ * Function: db_disconnect
+ * Arguments: $connection (int) - connection identifier
+ * Description: closes a database connection
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_disconnect($connection)
+{
+    $ret = mysql_close($connection);
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+/*
+ * Function: db_autocommit
+ * Arguments: $connection (int) - connection identifier
+ * Description: turn autocommit on or off
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_autocommit($connection, $enabled)
+{
+    if (!$enabled) {
+	db_post_error(0, "Transactions not yet implemented");
+	return false;
+    }
+    return $ret;
+}
+
+
+function db_commit($connection)
+{
+//    $ret = @ifx_commit($connection);
+//    db_check_errors($php_errormsg);
+//    return $ret;
+    return true;
+}
+
+function db_begintran($connection)
+{
+    return true;
+}
+
+function db_rollback($connection)
+{
+//    $ret = @ifx_rollback($connection);
+//    db_check_errors($php_errormsg);
+//    return $ret;
+    db_post_error(0, "Transactions not yet implemented");
+    return false;
+}
+
+
+function db_quote_string($string)
+{
+    $ret = ereg_replace("'", "''", $string);
+    return $ret;
+}
+
+
+function db_prepare($connection, $query)
+{
+    return $ret;
+}
+
+
+function db_execute($conn, $query)
+{
+	global $db_lastid;
+
+    $ret = mysql_query($query, $conn);
+	$db_lastid = mysql_insert_id( $conn );
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+
+function db_error_code()
+{
+    global $db_error_code;
+    return $db_error_code;
+}
+
+
+function db_error_msg()
+{
+    global $db_error_msg;
+    return $db_error_msg;
+}
+
+
+function db_error_source()
+{
+    global $db_error_source;
+    return $db_error_source;
+}
+
+
+function db_check_errors($errormsg)
+{
+    global $db_error_code, $db_error_msg, $db_error_source;
+	$db_error_msg = $errormsg;
+
+    if (ereg('SQL error: (\[.*\]\[.*\]\[.*\])(.*), SQL state (.....)',
+	     $errormsg, &$data)) {
+	list($foo, $db_error_source, $db_error_msg, $db_error_code) = $data;
+    } else {
+	$db_error_msg = $db_error_source = false;
+	$db_error_code = 0;
+    }
+}
+
+
+function db_post_error($code, $message)
+{
+    global $db_error_code, $db_error_msg, $db_error_source;
+    $db_error_code = $code;
+    $db_error_msg = $message;
+    $db_error_source = "[PHP][Informix][db-ifx]";
+}
+
+function db_lastid( $conn )
+{
+    return $db_lastid;
+}
+
+function db_sqldate( $time )
+{
+    if (!$time) return " NOW() ";
+    $format = "'%Y-%m-%d %H:%M:%S'";
+    return ts2date( $time, $format );
+}
+
+
+function db_api_version()
+{
+    return 10; // 1.0
+}
+
+?>

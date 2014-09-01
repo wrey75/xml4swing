@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<JFrame title="JCompta" 
+			name="com.oxande.jcompta.AbstractLedgerFrame"
+			onClose="onExit">
+	<menubar>
+		<menu text="_Fichier">
+			<item text="_Quitter" shortcut="alt F4" action="onExit" />
+		</menu>
+		
+		<menu text="_Comptes">
+			<item action="onNewAccount">_Ajouter</item>
+		</menu>
+		
+		<menu text="_Journaux">
+			<item action="onNewJournal">_Créer un journal</item>
+		</menu>
+		
+		<menu text="Aide">
+           	<item text="_A propos de..." shortcut="ctrl A">
+<!--            		<action>
+           		MainDialog dlg = new MainDialog();
+           		dlg.initComponents();
+           		dlg.setVisible(true);
+           		</action> -->
+           	</item>
+		</menu>
+	</menubar>
+
+	<!-- <tabs>
+		   <tab title="tab n°1">
+		     <table title="Input block" >
+		        <tr >
+		          <td align="left">Nombre d'adhérents:</td>
+		          <td><textfield></textfield></td>
+		        </tr>
+		        <tr>
+		          <td>A very long label to test the size</td>
+		          <td></td>
+		        </tr>
+		        <tr>
+		          <td>Age:</td>
+		          <td><input type="text" property="age#"></input></td>
+		        </tr>
+		        <tr>
+		          <td><label >Password:</label></td>
+		          <td><password></password></td>
+		        </tr>
+		     </table>
+		     <table>
+		       <tr>
+		         <td><button >_OK</button></td>
+		       </tr>
+		     </table>
+		   </tab>
+		   <tab title="tab n°2">
+		     <split orientation="vertical">
+		     	<textarea rows="20" cols="20" vscroll="always">Partie haute</textarea>
+		     	<list vscroll="auto">
+					<data>
+						<value>item 1</value>
+						<value>item two</value>
+						<value selected="true">item three</value>
+					</data>
+				</list>
+		     </split>
+		   </tab>
+		   <tab title="ComboBox">
+		      <select>
+		        <option value="1">item one</option>
+		        <option value="2">item two</option>
+		        <option value="3" selected="true">item three</option>
+		        <option value="4">item four</option>
+		      </select>
+		   </tab>
+		</tabs> -->
+</JFrame>

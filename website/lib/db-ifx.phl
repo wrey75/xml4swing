@@ -1,0 +1,208 @@
+<?php // -*- C++ -*-
+/*
+ * $Id: db-msql.phl,v 1.0 1998/10/01 18:41:56 ssb Exp $
+ */
+
+$db_error_code = 0;
+$db_error_msg = false;
+$db_error_source = false;
+
+/**
+ * @function db_connect
+ * @purpose Connect to a database
+ * @desc
+ *   Connects to a database and returns and identifier for the connection.
+ * @arg database
+ *   Data source name or database host to connect to.
+ * @arg user
+ *   Name of user to connect as.
+ * @arg password
+ *   The user's password.
+ */
+function db_connect($dsn, $user, $password)
+{
+    $ret = @msql_pconnect($dsn);
+    if (!$ret) {
+	db_check_errors($php_errormsg);
+	return false;
+    }
+    return $ret;
+}
+
+/*
+ * Function: db_query
+ * Arguments: $conn (int)     - connection identifier
+ *            $query (string) - SQL statement to execute
+ * Description: executes an SQL statement
+ * Returns: (int) 0 - query failed
+ *                1 - query succeeded
+ */
+function db_query($conn, $query)
+{
+    $ret = @msql_query($query, $conn);
+    if (! $ret) {
+	db_check_errors($php_errormsg);
+	return false;
+    }
+    return $ret;
+}
+
+/*
+ * Function: db_fetch_row
+ * Arguments: $result (int)   - result identifier
+ * Description: Returns an array containing data from a fetched row.
+ * Returns:   false - error
+ *          (array) - returned row
+ */
+function db_fetch_row($result)
+{
+    $row = @msql_fetch_row($result);
+    if (!$row) {
+        db_check_errors($php_errormsg);
+        return false;
+    }
+    $row2 = array();
+    for (reset($row) ; $fieldname=key($row) ; next($row) ) {
+        $row2[] = $row[$fieldname];
+    }
+    return $row2;
+}
+
+/*
+ * Function: db_free_result
+ * Arguments: $result (int)   - result identifier
+ * Description: Frees all memory associated with a result identifier.
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_free_result($result)
+{
+    $ret = @msql_free_result($result);
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+/*
+ * Function: db_disconnect
+ * Arguments: $connection (int) - connection identifier
+ * Description: closes a database connection
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_disconnect($connection)
+{
+    $ret = @msql_close($connection);
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+/*
+ * Function: db_autocommit
+ * Arguments: $connection (int) - connection identifier
+ * Description: turn autocommit on or off
+ * Returns: (int) 0 - failure
+ *                1 - success
+ */
+function db_autocommit($connection, $enabled)
+{
+    if (!$enabled) {
+	db_post_error(0, "Transactions not yet implemented");
+	return false;
+    }
+    return $ret;
+}
+
+
+function db_commit($connection)
+{
+//    $ret = @ifx_commit($connection);
+//    db_check_errors($php_errormsg);
+//    return $ret;
+    return true;
+}
+
+
+function db_rollback($connection)
+{
+//    $ret = @ifx_rollback($connection);
+//    db_check_errors($php_errormsg);
+//    return $ret;
+    db_post_error(0, "Transactions not yet implemented");
+    return false;
+}
+
+
+function db_quote_string($string)
+{
+    $ret = ereg_replace("'", "''", $string);
+    return $ret;
+}
+
+
+function db_prepare($connection, $query)
+{
+    return $ret;
+}
+
+
+function db_execute($statement, $data)
+{
+    $ret = @msql_query($statement, $connection);
+    db_check_errors($php_errormsg);
+    return $ret;
+}
+
+
+function db_error_code()
+{
+    global $db_error_code;
+    return $db_error_code;
+}
+
+
+function db_error_msg()
+{
+    global $db_error_msg;
+    return $db_error_msg;
+}
+
+
+function db_error_source()
+{
+    global $db_error_source;
+    return $db_error_source;
+}
+
+
+function db_check_errors($errormsg)
+{
+    global $db_error_code, $db_error_msg, $db_error_source;
+	$db_error_msg = $errormsg;
+	echo "<!-- $errormsg -->";
+	return;
+
+    if (ereg('SQL error: (\[.*\]\[.*\]\[.*\])(.*), SQL state (.....)',
+	     $errormsg, &$data)) {
+	list($foo, $db_error_source, $db_error_msg, $db_error_code) = $data;
+    } else {
+	$db_error_msg = $db_error_source = false;
+	$db_error_code = 0;
+    }
+}
+
+
+function db_post_error($code, $message)
+{
+    global $db_error_code, $db_error_msg, $db_error_source;
+    $db_error_code = $code;
+    $db_error_msg = $message;
+    $db_error_source = "[PHP][Informix][db-ifx]";
+}
+
+
+function db_api_version()
+{
+    return 10; // 1.0
+}
+
+?>

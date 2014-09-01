@@ -1,0 +1,528 @@
+<?php /* -*- C++ -*- */
+/*
+ * $Id: sql.phl,v 1.5 1998/07/02 09:52:13 ssb Exp $
+ */
+
+/*
+ * ABOUT:
+ *
+ * Lazy PHP programmer series: SQL helper functions.
+ * Written by Stig Bakken <ssb@guardian.no>
+ *
+ * CONFIGURATION:
+ *
+ * You must set some global variables prior to including this library:
+ * $db_type          which database abstraction layer to use.
+ *                   If your layer is defined in "db-odbc.phl",
+ *                   set this variable to "odbc".
+ * $db_dsn           Which database to connect to (dsn=data source name)
+ * $db_user          Which user to connect as
+ * $db_pass          Password used when connecting
+ *
+ * Some optional global variables can be set:
+ * $sql_debug        true/false, toggles debug information
+ * $sql_log_facility how to log debug information
+ * $sql_log_dest     debug information destination
+ *
+ * $sql_log_facility and $sql_log_dest are passed as the second
+ * and third args to PHP's error_log() function, respectively.
+ * The default is debugging through the PHP TCP debugger to
+ * port 1400 on localhost.  Debug information is also disabled
+ * by default.
+ *
+ * The following global variables will be defined:
+ * $db_connection  The opened connection.
+ *
+ *
+ * USAGE:
+ *
+ * All you have to do is require("sql.phl"), either explicitly in the
+ * pages where you want to use it, or through auto_prepend_file somehow.
+ * Being a lazy programmer, I always include everything I need with
+ * auto-prepend from a file I call "config.phl" looking something like
+ * this:
+ *
+ * <?php
+ * $db_type = "odbc";
+ * $db_user = "myuser";
+ * $db_pass = "mypassword";
+ * $db_dsn = "SVT=Solid; DSN=MyDB"
+ * require("sql.phl");
+ * ?>
+ *
+ * Once you have included this file, a database connection will
+ * be opened for you once it is needed, and this connection will
+ * be used for all queries.  Memory is freed automatically for
+ * all functions except sql().
+ *
+ * Example use of all functions: 
+ *
+ * // returns a result identifier
+ * $res = sql("SELECT * FROM table");
+ *
+ * // returns one column:
+ * $name = sql_one("SELECT name FROM table WHERE id = $id");
+ *
+ * // returns one row in an array
+ * $row = sql_onerow("SELECT * FROM table WHERE id = $id");
+ *
+ * // returns an array of arrays with all the result data
+ * $data = sql_all("SELECT * FROM table");
+ *
+ * // returns an array with data from column 0 only:
+ * $names = sql_col("SELECT name FROM table", 0);
+ *
+ * // returns an associative array with the first column as the
+ * // key and the second column as the value:
+ * $name_by_id = sql_assoc("SELECT id, name FROM table");
+ *
+ * // enable auto-commit
+ * sql_autocommit(true);
+ *
+ * // disable auto-commit
+ * sql_autocommit(false);
+ *
+ * // commit transaction
+ * sql_commit();
+ *
+ * // roll back transaction
+ * sql_rollback();
+ *
+ */
+
+include( "$LIBROOT/db-$db_type.phl" );
+
+$db_connection = 0;
+
+/* debugging defaults */
+if (empty($sql_debug)) {
+    $sql_debug = false;
+}
+if (empty($sql_log_facility)) {
+    $sql_log_facility = 2; /* debug through TCP */
+}
+if (empty($sql_log_dest)) {
+    $sql_log_dest = "127.0.0.1:1400"; /* destination */
+}
+
+/*
+ * Function: sql_debug
+ * Description: sends debug information somewhere if
+ * the global variable $sql_debug is true.
+ */
+function sql_debug($message) {
+    global $sql_debug, $sql_log_facility, $sql_log_dest, $sql_last_message;
+	$last_message = $message;
+    if ($sql_debug) {
+	error_log("[SQL] $message", $sql_log_facility, $sql_log_dest);
+    }
+}
+
+/*
+ * Function: assert_db_connection
+ * Description: makes sure we have a database connection
+ */
+function assert_db_connection()
+{
+    global $db_connection;
+    if ($db_connection) {
+		return;
+    }
+    global $db_dsn, $db_user, $db_pass;
+    $db_connection = db_connect($db_dsn, $db_user, $db_pass);
+    if (!$db_connection) {
+		die("Failed to connect to database.");
+    }
+}
+
+/*
+ * Function: sql
+ * Arguments: $query (string)   - SQL statement
+ * Description: executes an SQL statement
+ * Returns: (int) result identifier
+ *          returns 0 upon error
+ */
+function sql($query) {
+    global $db_connection;
+	global $db_errprint;
+	global $db_mail;
+	global $sql_last_error;
+    assert_db_connection();
+    $ret = db_query($db_connection, $query);
+	if (!$ret) {
+		echo "<!-- \n SQL:\n $query\n\n Error: $sql_last_error\n -->";
+		if( $db_errprint ) echo "<small><FONT COLOR=#ff0000>[SQLError: " . htmlentities($query) ."]</FONT></small>";
+		if( $db_mail ){
+			mail( $db_mail, "SQL error", 
+				"Error on database:\n"
+				. "Page: " . $GLOBALS[ "SCRIPT_NAME" ] . "\n"
+				. "SQL: $query\n\n" );
+		}
+	}
+	return $ret;
+}
+
+
+function sql_execute($query)
+{
+    global $db_connection;
+
+    assert_db_connection();
+    $err = db_execute($db_connection, $query);
+	if (!$err) {
+		if( $DEBUG ) echo "<small>[SQLError: " . htmlentities($query) ."]</small>";
+		else echo "<!-- Erreur SQL:\n$query\n -->";
+	}
+	return $err;
+}
+
+
+/*
+ * Function: sql_onerow
+ * Arguments: $query (string)   - SQL statement
+ * Description: executes an SQL statement and returns the first
+ *              row of the result
+ * Returns: (array) the first row
+ *          returns 0 upon error
+ */
+function sql_onerow($query) {
+    $res = sql($query);
+	if( $res ){
+	    $row = db_fetch_row($res);
+    	db_free_result($res);
+	}
+	else {
+		$row = false;
+	}
+    return $row;
+}
+
+/*
+ * Function: sql_onearray
+ * Arguments: $query (string)   - SQL statement
+ * Description: executes an SQL statement and returns an associative
+ *		array of the first row of the result
+ * Returns: (array) the first row
+ *          returns 0 upon error
+ */
+function sql_onerowarray($query) {
+    $res = sql($query);
+    $row = db_fetch_array($res);
+    while (list( $k, $v ) = each( $row )) {
+        $row[ strtoupper( $k ) ] = $v;
+    }
+    reset( $row );
+    db_free_result($res);
+    return $row;
+}
+
+
+/*
+ * Function: sql_one
+ * Arguments: $query (string)   - SQL statement
+ * Description: executes an SQL statement and returns the first
+ *              column of the first row of the result
+ * Returns: (mixed) the first column of the first row
+ *          returns false upon error
+ */
+function sql_one($query) {
+    $row = sql_onerow($query);
+    if (gettype($row) == "array") {
+	return $row[0];
+    } else {
+	return false;
+    }
+}
+
+/*
+ * Function: sql_all
+ * Arguments: 
+ *	$query (string)   - SQL statement
+ *	$first (int)      - first record to fetch
+ *	$last (int)       - last record to fetch
+ *
+ * Description: executes an SQL statement and returns an array
+ *              of arrays with the rows and columns of all the
+ *              result data from the query.
+ *
+ * Returns: array of arrays or false on error
+ */
+function sql_all( $query, $first = 0, $last = -1 ) {
+    $res = sql($query);
+    if ($res) {
+		$rec = 0;
+		$all = array();
+		while ($row = db_fetch_row($res)) {
+			if( $rec >= $first && ($last == -1 || $last < $rec) ){
+	    		$all[] = $row;
+			}
+			$rec++;
+		}
+		db_free_result($res);
+		return $all;
+    }
+    return false;
+}
+
+
+/*
+ * Function: sql_col
+ * Arguments: $query (string)   - SQL statement
+ *            $column (int)     - returned result column number
+ * Description: executes an SQL statement and returns an array
+ *              with the results from a specific column in the result.
+ * Returns: array or false on error
+ */
+function sql_col($query, $column) {
+    $res = sql($query);
+    if ($res) {
+	$all = array();
+	while ($row = db_fetch_row($res)) {
+	    $all[] = $row[$column];
+	}
+	db_free_result($res);
+	return $all;
+    }
+    return false;
+}
+
+
+/*
+ * Function: sql_assoc
+ * Arguments: $query (string)   - SQL statement
+ * Description: executes an SQL statement and returns an associative
+ *              array.  The indices of this array are taken from the
+ *              first column of the result, while the values are taken
+ *              from the second column.  If there are more than two
+ *              columns the remaining ones are ignored.
+ * Returns: associative array or false on error
+ */
+function sql_assoc($query) {
+    $res = sql($query);
+    if ($res) {
+	$row = db_fetch_row($res);
+	if (!is_array($row) || count($row) < 2) {
+	    db_free_result($res);
+	    return false;
+	}
+	while ($row) {
+	    $assoc[$row[0]] = $row[1];
+	    $row = db_fetch_row($res);
+	}
+	db_free_result($res);
+	return $assoc;
+    }
+    return false;
+}
+
+
+function sql_autocommit($enabled)
+{
+    global $db_connection;
+    if (!$enabled) {
+	sql_debug("transaction starting");
+    }
+    return db_autocommit($db_connection, $enabled);
+}
+
+
+function sql_begintran()
+{
+    global $db_connection;
+    sql_debug("start transaction");
+    return db_begintran($db_connection);
+}
+
+function sql_commit()
+{
+    global $db_connection;
+    sql_debug("transaction complete");
+    return db_commit($db_connection);
+}
+
+
+function sql_rollback()
+{
+    global $db_connection;
+    sql_debug("transaction aborted");
+    return db_rollback($db_connection);
+}
+
+
+function sqlstr( $chaine )
+{
+	if( is_null( $chaine ) ) {
+		return "NULL";
+	}
+	$chaine = ereg_replace( "([\\])'", "'", $chaine );
+	$chaine = ereg_replace( "'", "''", $chaine );
+	$chaine = str_replace( "\r", "", $chaine );
+	$chaine = str_replace( "\n", "'+CHAR(13)+'", $chaine );
+	return "'" . $chaine . "'";
+}
+
+
+function sql_lastid( $colinfo = "" )
+{
+    global $db_connection, $err;
+    assert_db_connection();
+	return db_lastid( $db_connection, $colinfo );
+}
+
+function sql2ts( $date )
+{
+    if (ereg( "([0-9]{4})-([0-9]{1,2})-([0-9]{1,2}) ([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2})", $date, $reg )) {
+        $date = mktime( $reg[4], $reg[5], $reg[6], $reg[2], $reg[3], $reg[1] );
+    }
+    else if (ereg( "([0-9]{4})([0-9]{1,2})([0-9]{1,2})([0-9]{1,2})([0-9]{1,2})([0-9]{1,2})", $date, $reg )) {
+        $date = mktime( $reg[4], $reg[5], $reg[6], $reg[2], $reg[3], $reg[1] );
+    }
+    else if (ereg( "([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})", $date, $reg )) {
+        $date = mktime( 0, 0, 0, $reg[2], $reg[3], $reg[1] );
+    }
+    else if (ereg( "([0-9]{1,2}) ([a-zûé]*). ([0-9]{4}) *([0-9]{1,2}):([0-9]{1,2})", $date, $reg )) {
+        $mon[ "janv" ] = "1";
+        $mon[ "févr" ] = "2";
+        $mon[ "mar" ] = "3";
+        $mon[ "avr" ] = "4";
+        $mon[ "ma" ] = "5";
+        $mon[ "jui" ] = "6";
+        $mon[ "juil" ] = "7";
+		$mon[ "aoû" ] = "8";
+		$mon[ "sept" ] = "9";
+		$mon[ "oct" ] = "10";
+		$mon[ "nov" ] = "11";
+		$mon[ "déc" ] = "12";
+		if (!$mon[ $reg[2] ]) {
+            echo "## CAN NOT DECODE ENTIRELY SQL2TS: $date ##";
+		}
+        $date = mktime( $reg[4], $reg[5], 0, $mon[ $reg[2] ], $reg[1], $reg[3] );
+    }
+    else if ($date == "") {
+        $date = -1;
+	}
+    else if (ereg( "([0-9]{1,2})/([0-9]{2})/([0-9]{2,4})", $date, $reg )) {
+        $date = mktime( 0, 0, 0, $reg[2], $reg[1], $reg[3] );
+	}
+	else {
+        echo "## CAN NOT DECODE SQL2TS: '$date' ##";
+        $date = -1;
+    }
+    return $date;
+}
+
+
+function sqldate( $time = false )
+{
+	if( $time == -1 ) return "NULL";
+
+	return db_sqldate($time);
+}
+
+function sql_likebegin( $colname, $data )
+{
+	// version mySQL; REGEXP '^[$sel].*'"
+	$like = "( ";
+	for ($i=0; $i<strlen($data); $i++) {
+		if ($i > 0) $like .= "OR ";
+		$like .= "$colname LIKE '" . substr( $data, $i, 1 ) . "%'";
+	}
+	$like .= " )";
+	return $like;
+}
+
+function sqlselect( $name, $query, $default = "" )
+{
+
+	$data = sql_all( $query );
+	if ($data) {
+		$ret = "<SELECT NAME=\"$name\">\n";
+		while (list( $k, $row ) = each( $data )) {
+			list( $key, $val ) = $row;
+			$selected = (!strcmp( $default, $val ) ? " SELECTED" : "");
+			$ret .= "<OPTION VALUE=\"$key\"$selected>$val</OPTION>\n";
+		}
+		$ret .= "\n</SELECT>";
+	}
+	else {
+		$ret = "&lt; DB-ERROR &gt;";
+	}
+	return ret;
+}
+
+function _create_request_array( $arr )
+{
+	foreach( $arr as $key => $value ){
+		if( substr( $key, 0, 1 ) === "+" ){
+			$key = substr( $key, 1 );
+			$is_key = 1;
+		}
+		else {
+			$is_key = 0;
+		}
+
+		if( substr( $key, 0, 1 ) === "!" ){
+			$key = substr( $key, 1 );
+		}
+		else {
+			$value = sqlstr( $value );
+		}
+		if( $is_key ){
+			$ret[ 'keys' ][ $key ] = $value;
+		}
+		else {
+			$ret[ 'std' ][ $key ] = $value;
+		}
+	}
+	return $ret;
+}
+
+function make_insert( $table, $arr )
+{
+	$i = 0;
+	$part1 = "";
+	$part2 = "";
+	$cols = _create_request_array( $arr );
+	$arr = array_merge( $cols['keys'], $cols['std'] );
+	foreach( $arr as $key => $value ){
+		if( $i > 0 ){
+			$part1 .= ", $key";
+			$part2 .= ", $value";
+		}
+		else {
+			$part1 .= $key;
+			$part2 .= $value;
+		}
+		$i++;
+	}
+	return "INSERT INTO $table ( $part1 ) VALUES( $part2 )";
+}
+
+function make_update( $table, $arr )
+{
+	$part1 = "UPDATE $table ";
+	$cols = _create_request_array( $arr );
+	$i = 0;
+	foreach( $cols['std'] as $key => $value ){
+		if( $i > 0 ){
+			$part1 .= ", $key = $value";
+		}
+		else {
+			$part1 .= "SET $key = $value";
+		}
+		$i++;
+	}
+	$i = 0;
+	foreach( $cols['keys'] as $key => $value ){
+		if( $i > 0 ){
+			$part1 .= " AND $key = $value";
+		}
+		else {
+			$part1 .= " WHERE $key = $value";
+		}
+		$i++;
+	}
+	return $part1;
+}
+
+?>

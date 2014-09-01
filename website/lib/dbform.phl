@@ -1,0 +1,445 @@
+<?php
+//
+//	fichier:	dbform.phl
+//	Auteur:		William Rey
+//	Date:		03/05/1999
+//
+
+class dbform {
+	var $form;		//	Formulaire
+	var $rec;		//	Enregistrement associé
+	var $mode;		//	Mode courant
+	var $data;		//	Données courante
+
+	function dbform(
+				$table,
+				$infos,
+				$file = false, 
+				$name="formulaire", 
+				$method="post" ) {
+
+		global $PHP_SELF;
+		if (!$file) $file = $PHP_SELF;
+		$this->form = new formulaire( $file, $name, $method );
+		$this->rec = new record( $table, $infos );
+		$this->errlist = array();
+		$this->errorcolor = "#ffe0e0";
+	}
+
+
+	function checkdata()
+	{
+		$bOk = true;
+		reset( $this->data );
+		while (list( $key, $val ) = each( $this->data )) {
+			if ($val == "") {
+				if ($this->rec->isrequired( $key )) {
+					$this->adderr( $key, "Obligatoire" );
+					$bOk = false;
+				}
+				else continue;
+			}
+
+			switch ($this->rec->gettype( $key )) {
+				case "DATE" :
+					if ( ereg( "([0-9]{1,2})[/.]([0-9]{1,2})[./]([0-9]{2,4})", 
+									$val,
+									$reg ) ) {
+						if ($reg[3] < 30) {
+							$reg[3] += 2000;
+						}
+						else if ($reg[3] < 100) {
+							$reg[3] += 1900;
+						}
+						if (!checkdate( $reg[2], $reg[1], $reg[3] )) {
+							$this->adderr( $key );
+							$bOk = false;
+						}
+						else {
+							$this->data[ $key ] = "$reg[1]/$reg[2]/$reg[3]";
+						}
+					}
+					else {
+						$this->adderr( $key, "Format invalide pour une date  (" . $val. ")" );
+						$bOk = false;
+					}					
+					break;
+
+				case "MONEY" :
+					if (!settype( $val, "double" )) {
+						$this->adderr( $key, "La valeur doit être un décimal" );
+						$bOk = false;
+					}
+					break;
+
+				case "BOOLEAN" :
+					if ($val != "N" && $val != "O") {
+						$this->adderr( $key, "La valeur doit être 'OUI' ou 'NON'" );
+						$bOk = false;
+					}
+					break;
+
+				case "INTEGER" :
+					if (!settype( $val, "integer" )) {
+						$this->adderr( $key, "La valeur '$val' doit être un nombre entier" );
+						$bOk = false;
+					}
+					break;
+
+				default :
+					break;
+			}
+		}
+		return $bOk;
+	}
+
+	function captiongroup( $str ="" )
+	{
+		return $this->form->captiongroup( $str );
+	}
+
+
+	function caption( $str ="" )
+	{
+		return "<TD>&nbsp;</TD>" . $this->form->caption( $str );
+	}
+
+	function sqlcombo( $name, $query, $bOptional = false )
+	{
+		$data = ($this->data ? $this->data[ $name ] : $GLOBALS[ $name ]);
+		return $this->form->sqlcombo( $name, $data, $query, $bOptional );
+	}
+
+	function tdsqlcombo( $name, $query, $bOptional = false )
+	{
+		return $this->tdopen( $name )
+			. $this->sqlcombo( $name, $query, $bOptional )
+			. $this->tdclose( $name );
+	}
+
+	function arraycombo( $name, $tab, $bOptional = false )
+	{
+		$data = ($this->data ? $this->data[ $name ] : "");
+		return $this->form->arraycombo( $name, $data, $tab, $bOptional );
+	}
+
+	function textarea( $name, $width = 0, $row = 0 )
+	{
+		$data = ($this->data ? $this->data[ $name ] : "");
+		return $this->form->textarea( $name, $data, $width, $row );
+	}
+
+	function getdata( $name )
+	{
+		return ($this->data ? $this->data[ $name ] : "");
+	}
+
+	function setdata( $name, $value )
+	{
+		if (!$this->data) $this->data = array();
+		$this->data[ $name ] = $value;
+	}
+
+
+	function adderr( $name, $txterr = " " )
+	{
+		$this->errlist[ $name ] = $txterr;
+	}
+
+	function inerror( $name )
+	{
+		reset( $this->errlist );
+		while (list( $key, $val ) = each( $this->errlist )) {
+			if ($key == $name) {
+				return $val;
+			}
+		}
+		return false;
+	}
+
+	
+	function tdcaption( $name, $lib = "" )
+	{
+		$str = "  <TD>&nbsp;</TD>\n";
+		if (!$this->inerror( $name )) {
+			$str .= $this->form->caption( $lib );
+		}
+		else {
+			$str .= $this->form->caption( $lib, $this->errorcolor );
+		}
+		return $str;
+	}
+
+
+	function tdopen( $name )
+	{
+		$str = "  <TD";
+		if ($this->inerror( $name )) {
+			$str .= mk_attrib( "BGCOLOR", $this->errorcolor );
+		}
+		$str .= ">\n";
+		return $str;
+	}
+
+
+	function tdclose( $name )
+	{
+		$errtext = $this->inerror( $name );
+		if (!$errtext) {
+			return "  </TD>\n";
+		}
+
+		$str = "    <FONT SIZE=2>"
+				. htmlspecialchars( $errtext )
+				. "</FONT>\n"
+				. "  </TD>\n";
+		return $str;
+	}
+
+
+	function tdinput( $name, $maxlength = -1, $size = false )
+	{
+		return $this->tdopen( $name )
+			. "    " . $this->input( $name, $maxlength, $size ) . "\n"
+			. $this->tdclose( $name );
+	}
+
+	function tdselect( $name, $list = false )
+	{
+		if (!$list) $list = array( "O" => "OUI", "N" => "NON" );
+		return $this->tdopen( $name )
+			. "    " . $this->select( $name, $list ) . "\n"
+			. $this->tdclose( $name );
+	}
+
+	function select( $name, $list = false )
+	{
+		if (!$list) $list = array( "O" => "OUI", "N" => "NON" );
+		$v = $this->rec->getdata( $name );
+		return $this->form->select( $name, $list, 1, $v );
+	}
+
+
+	function tdtextarea( $name, $width = 0, $row = 0 )
+	{
+		if ($width == 0) $width= 40;
+		if ($row == 0) $row= 5;
+		return $this->tdopen( $name )
+					. $this->textarea( $name, $width, $row )
+					. $this->tdclose( $name );
+	}
+	
+	function input( $name, $maxlength=-1, $size = false )
+	{
+		$data = ($this->data ? $this->data[ $name ] : "");
+		if ($this->rec->iskey( $name ) 
+				&& ($this->form->getmode() == "UPD" 
+					|| $this->form->getmode() == "SEL")) {
+			return $this->form->noedit( $name, $data );
+		}
+		else {
+			if ($this->rec->gettype( $name ) == "BOOL") {
+				if ($this->form->getmode() == "R/O") {
+					switch ($data) {
+						case "O" :
+							$str = "OUI";
+							break;
+						case "N" :
+							$str = "NON";
+							break;
+						default :
+							$str = "<I>Indéterminé</I>";
+							break;
+					}
+				}
+				else {
+					$str = "<INPUT TYPE=radio NAME=$name VALUE=O";
+					if ($data == "O") $str .= " CHECKED";
+					$str .= ">OUI&nbsp;&nbsp;";
+					$str .= "<INPUT TYPE=radio NAME=$name VALUE=N";
+					if ($data == "N") $str .= " CHECKED";
+					$str .= ">NON";
+				}
+				return $str;
+			}
+			else {
+				return $this->form->text( $name, $data, $maxlength, $size );
+			}
+		}
+	}
+
+
+	//
+	//	Saisie d'une adresse complète
+	//
+	function tdadrinput()
+	{
+		return "  <TD>" . $this->adrinput() . "</TD>\n";
+	}
+
+
+	function adrinput()
+	{
+		$adr1 = $this->data[ "adr1" ];
+		$adr2 = $this->data[ "adr2" ];
+		$cpost = $this->data[ "cpost" ];
+		$ville = $this->data[ "ville" ];
+		$ipays = $this->data[ "ipays" ];
+		return $this->form->adrtext( $adr1, $adr2, $cpost, $ville, $ipays );
+	}
+
+
+	//
+	//	initdata()
+	//	==========
+	//	Mise à jour automatique des données selon les consignes.
+	//
+	//	Retourne false en cas d'erreur. Dans ce cas, il n'est 
+	//	possible d'afficher le formulaire.
+	//
+	function initdata( $droit = "SIUDX" )
+	{
+		switch ($this->form->action()) {
+			case "DEL" :
+				if (strchr( $droit, "D" )) {
+					$this->data = $this->rec->select();
+					if (!$this->data) {
+						echo err_text("La fiche à détruire n'est pas accessible.");
+					}
+					else {
+						if ($this->rec->delete()) {
+							$this->form->setmode( "R/O" );
+						}
+						else {
+							echo err_text("Suppression de la fiche impossible." );
+						}
+					}
+				}
+				else {
+					echo err_text( "Les droits sont insuffisants!" );
+				}
+				break;
+
+			case "UPD" :
+				if (strchr( $droit, "U" )) {
+					$this->data = $this->rec->getinput();
+					$this->checkdata();
+					if (!$this->rec->update()) {
+						echo err_text("Mise à jour de la fiche impossible." );
+					}
+					else {
+						$this->data = $this->rec->select();
+					}
+				}
+				else {
+					echo err_text( "Les droits sont insuffisants!" );
+				}
+				break;
+
+			case "INS" :
+				if (strchr( $droit, "I" )) {
+					$this->data = $this->rec->getinput();
+					if (!$this->rec->insert()) {
+						echo err_text( "Insertion de la fiche impossible. Veuillez vérifier les informations." );
+						$this->form->setmode( "NEW" );
+						$this->checkdata();
+					}
+					else {
+						$this->data = $this->rec->select();
+						$this->form->setmode( "UPD" );
+					}
+				}
+				else {
+					echo err_text( "Les droits sont insuffisants!" );
+				}
+				break;
+
+			case "NEW" :
+				break;
+
+			case "R/O" :
+				$this->data = $this->rec->select();
+				break;
+
+			default :
+				$this->data = $this->rec->select();
+				if ($this->data) {
+					$this->form->setmode( "SEL" );
+					return true;
+				}
+				else {
+					$this->form->setmode( "NEW" );
+					return true;
+				}
+				return false;
+		}
+		return true;
+	}
+
+
+	function hidden( $name ) {
+		$data = ($this->data ? $this->data[ $name ] : "");
+		return $this->form->hidden( $name, $data );
+	}
+
+	function button_new() {
+		return $this->form->button_new();
+	}
+
+	function button_insert() {
+		return $this->form->button_insert();
+	}
+
+	function button_delete() {
+		return $this->form->button_delete();
+	}
+
+	function button_reset() {
+		return $this->form->button_reset();
+	}
+
+	function button_update() {
+		return $this->form->button_update();
+	}
+
+	function buttons( $droit = "SIUD" )
+	{
+		$btns = "";
+		switch ($this->form->getmode()) {
+			case "DEL" :
+				if (strchr( $droit, "I" )) {
+					$btns = $this->form->button_new();
+				}
+				break;
+
+			case "UPD" :
+			case "SEL" :
+				if (strchr( $droit, "U" )) $btns .= $this->form->button_update();
+				if (strchr( $droit, "D" )) $btns .= $this->form->button_delete();
+				if (strchr( $droit, "I" )) $btns .= $this->form->button_new();
+				$btns .= $this->form->button_reset();
+				break;
+
+			case "NEW" :
+				if (strchr( $droit, "I" )) $btns .= $this->form->button_insert();
+				$btns .= $this->form->button_reset();
+				break;
+
+			case "R/O" :
+				if (strchr( $droit, "I" )) $btns .= $this->form->button_new();
+				break;
+
+			default :
+				return "Mode formulaire: ". $this->form->getmode() . " non reconnue.";
+				break;
+		}
+		return $btns;
+	}
+
+	function setmode( $mode ) { return $this->form->setmode($mode); }
+	function textinfo( $txt ) { return $this->form->textinfo( $txt ); }
+	function getmode() {  return $this->form->getmode(); }
+	function done() { return $this->form->done(); }
+}
+
+?>

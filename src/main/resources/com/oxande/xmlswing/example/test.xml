@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<JFrame rootClass="AutoFrame" 
+			title="Test" 
+			name="com.oxande.xmlswing.example.MainFrame"
+			icon="./forward16.gif"
+			onFocus="focusActivated"
+			stateChanged="statechanged+">
+			<onOpen>
+			   System.out.println("WindowEvent = " + e);
+			</onOpen>
+	<menubar>
+		<menu>
+			_File
+			<item perform="openFile">_Open File</item>
+			<item>Close Fil_e</item>
+			<separator />
+			<item>
+				_Quit
+				<action>
+					// Quit the application
+					System.exit(0);
+            </action>
+			</item>
+		</menu>
+		<menu>
+			Edit
+			<checkboxitem state="true" property="insertMode">Insert mode</checkboxitem>
+			<radioitem group="r">r1</radioitem>
+			<radioitem group="r" property="radio2">r2</radioitem>
+			<radioitem group="r">r3</radioitem>
+			<radioitem group="r">r4</radioitem>
+			<separator />
+			<lookandfeel />
+		</menu>
+		<menu>
+			Help
+			<menu>
+				Special operations
+				<item name="deleteProgram">
+					Delete the program
+            	</item>
+			</menu>
+           	<item text="_A propos de..." shortcut="ctrl A">
+           		<action>
+           		MainDialog dlg = new MainDialog();
+           		dlg.initComponents();
+           		dlg.setVisible(true);
+           		</action>
+           	</item>
+		</menu>
+	</menubar>
+
+	<!--<borderLayout>
+		<center>
+		--><tabs>
+		   <tab title="tab n°1">
+		     <table title="Input block" >
+		        <tr >
+		          <td align="left">Nombre d'adhérents:</td>
+		          <td><textfield></textfield></td>
+		        </tr>
+		        <tr>
+		          <td>A very long label to test the size</td>
+		          <td></td>
+		        </tr>
+		        <tr>
+		          <td>Age:</td>
+		          <td><input type="text" property="age#"></input></td>
+		        </tr>
+		        <tr>
+		          <td><label >Password:</label></td>
+		          <td><password></password></td>
+		        </tr>
+		     </table>
+		     <table>
+		       <tr>
+		         <td><button >_OK</button></td>
+		       </tr>
+		     </table>
+		   </tab>
+		   <tab title="tab n°2">
+		     <split orientation="vertical">
+		     	<textarea rows="20" cols="20" vscroll="always">Partie haute</textarea>
+		     	<list vscroll="auto">
+					<data>
+						<value>item 1</value>
+						<value>item two</value>
+						<value selected="true">item three</value>
+					</data>
+				</list>
+		     </split>
+		   </tab>
+		   <tab title="ComboBox">
+		      <select>
+		        <option value="1">item one</option>
+		        <option value="2">item two</option>
+		        <option value="3" selected="true">item three</option>
+		        <option value="4">item four</option>
+		      </select>
+		   </tab>
+		</tabs><!--
+		</center>
+		<south>
+			<label>Yo man!</label>
+		</south>
+	</borderLayout>
+--></JFrame>

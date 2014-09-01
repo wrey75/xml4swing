@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<JDialog rootClass="AutoDialog" 
+			title="Dialog Test" 
+			name="com.oxande.xmlswing.example.MainDialog"
+			icon="./forward16.gif"
+			resizable="false"
+			modal="true">
+
+	<table>
+	  <tr>
+	    <td rowspan="3">LOGO</td>
+	    <td>Written by:</td>
+	    <td>William Rey</td>
+	  </tr>
+	  <tr>
+	    <td>Licence:</td>
+	    <td>LGPL (or any other if needed)</td>
+	  </tr>
+	  <tr>
+	    <td>Current Time:</td>
+	    <td><label id="currentTime" text="???"/></td>
+	  </tr>
+	  <tr>
+	    <td colspan="3" align="right">
+	    	<button id="okButton" text="_OK" default="true"/>
+	    	<button id="cancelButton" text="_Cancel" >
+	    		<action>dispose();</action>
+	    	</button>
+	    </td>
+	  </tr>
+	</table>
+	
+</JDialog>

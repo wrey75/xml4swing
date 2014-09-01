@@ -1,0 +1,452 @@
+<?php
+
+/*
+ *	Fichier:	menu.phl
+ *	Auteur:		William Rey
+ *	Date:		06/1999
+ *
+ *	Description:
+ *	============
+ *	Générateur de menu pour un site WEB.
+ *
+ *	Functions:
+ *	==========
+ *	menu()
+ *	------
+ *	Construit l'objet et initialise les variables.
+ *		$method: Variable indiquant comment doit être géré le menu.
+ *			1 - Menu POPUP complet
+ *			2 - Menu POPUP selon la page en cours (gestion automatique)
+ *			3 - Menu horizontal ne laissant apparaître que les options
+ *				déjà sélectionnées (à la manière des répertoire dans
+ *				Yahoo!). La variable $home doit être renseignée pour
+ *				donner la page d'index.
+ *			4 - Menu POPUP complet pour sommaire
+ *	
+ *
+ *	draw()
+ *	------
+ *	Affichage du menu.
+ *
+ *	Variables:
+ *	==========
+ *		$font : Tableau clé/valeur contenant les informations
+ *			sur la fonte à utiliser pour les options de menu.
+ *			Différent selon la méthode d'initialisation.
+ *		$home : Home-page de l'application "/" par défaut!
+ *
+ *
+ */
+	
+class menu {
+
+	var $font;
+	var $table;
+	var $method;
+	var $home;
+	var $imgpath;
+	var $href;
+	var $prev;
+	var $next;
+
+	function menu( $method = 1 )
+	{
+		$this->width = 14;
+		$this->height = 12;
+		$this->prev = false;
+		$this->next = false;
+		$this->home = "/";
+		$this->max_level = 0;
+		$this->item = false;
+		$this->imgpath = "/images/";
+
+		$this->table = array( 
+						"BORDER" => 0,
+						"CLASS" => "menu",
+						"CELLSPACING" => 0,
+						"CELLPADDING" => 0 );
+		switch ($method) {
+			case 1 :
+			case 2 :
+				$this->font = array (
+						"FACE" => "Sans-Serif, Arial, Helvetica, Swiss",
+						"SIZE" => 1 );
+				break;
+
+			case 3 :
+				$this->font = array (
+						"FACE" => "arial, helvetica" );
+				break;
+
+			case 4 :
+				$this->font = array (
+						"FACE" => "Sans-Serif, Arial, Helvetica, Swiss"
+						);
+				break;
+
+			default :
+				print_error( "Constructeur de l'objet MENU - Métode inconnue" );
+				break;
+
+		}
+		$this->method = $method;
+	}
+
+	function done()
+	{
+	}
+
+
+	function draw_item( $iskey, $level, $item, $key = false )
+	{
+		$infos = split( "\|", $item . "|||" );
+		for ($i=1; $i<3; $i++) {
+			if (!$infos[i]) $infos[i] = $infos[i-1];
+		}
+		$str = $this->draw_elem( $iskey, $level, $infos[0], $key . $infos[1], $infos[2] );
+		return $str;
+	}
+
+
+	function branch( $list )
+	{
+
+		$fullkey = "";
+		reset( $list );
+		while (list($key, $val) = each( $list )) {
+
+			if ($val) {
+				$keyt = ($key == $this->href ? $key : "");
+
+				if (strlen( $keyt ) > strlen( $fullkey )) {
+					$fullkey = $key;
+				}
+			}
+		}
+		return $fullkey;
+	}
+
+
+	function getlevel( $key )
+	{
+		$count = 1;
+		while (strpos( $key, "." )) {
+			$count++;
+			$key = substr( $key, strpos( $key, "." ) + 1 );
+		}
+
+		return $count;
+	}
+
+
+	function draw( )
+	{
+		switch( $this->method ) {
+			case 1 :
+			case 2 :
+				//
+				//	Affichage complet du menu sous la forme d'un
+				//	tableau.
+				//
+				echo tag( "TABLE", $this->table ) . "\n";
+
+				$sel[0] = $this->branch( $this->item );
+				for ($i=1; $i<5; $i++) {
+					$sel[$i] = ereg_replace( "\.*[0-9]+$", "", $sel[$i-1] );
+				}
+
+				//	Déterminer les colonnes nécessaires
+				if ($this->method == 2) {
+					$this->max_level = $this->getlevel( $sel[0] );
+					if ($this->item[ $sel[0] . ".1" ]) $this->max_level++;
+				}
+
+				reset( $this->item );
+				$href_level = $this->getlevel( $this->href );
+
+				//	Parcourir la liste des menus
+				while( list($key, $val) = each( $this->item ) ) {
+					$level = $this->getlevel( $key );
+					$to_display = false;
+
+					//	Faut-il afficher ?
+					//	 - OUI si le mode 1 est sélectionné
+					//   - OUI si c'est le permeier niveau.
+					//   - NON dans les autres cas (finaliser...)
+					if ($this->method == 1 || $level == 1) {
+						$to_display = true;
+					}
+					else {
+						if (($level <= $href_level+1)) {
+							$key2 = ereg_replace( "(.*)\\.[0-9]*", "\\1", $key );
+							$key3 = $this->href;
+							for ($i=$level; $i < $href_level+1; $i++) {
+								$key3 = ereg_replace( "(.*)\\.[0-9]*", "\\1", $key3 );
+							}
+							$to_display = ($key3 == $key2);
+						}
+					}
+					
+					if ($to_display) {
+						$iskey = ($key == $this->href && strlen( $this->href ) == strlen( $key )) ;
+						echo $this->draw_item( $iskey, $level, $val );
+					}
+				}
+				echo "</TABLE>\n";
+				break;
+
+			case 3 :
+				//
+				//	Affichage du menu jusqu'à la branche concernée
+				//	(seul le premier niveau est affiché en
+				//	intégralité)
+				//
+				echo tag( "TABLE", $this->table ) . "\n";
+				echo "<TR>\n"
+						. "  <TD ALIGN=left>";
+				echo "<B>" . tag( "FONT", $this->font );
+				echo tag( "A", array( "HREF" => $this->home )) 
+						."Home</A> ";
+				echo "  </TD>\n"
+						. "</TR>\n";
+				echo "</TABLE>";
+				break;
+
+			case 4 :
+				//
+				//	Affichage complet du menu sous la forme d'un
+				//	tableau.
+				//
+				$this->table[] = "NOWRAP";
+				echo tag( "TABLE", $this->table ) . "\n";
+
+				$sel[0] = $this->branch( $this->item );
+				for ($i=1; $i<5; $i++) {
+					$sel[$i] = ereg_replace( "\.*[0-9]+$", "", $sel[$i-1] );
+				}
+
+				reset( $this->item );
+				$href_level = $this->getlevel( $this->href );
+
+				//	Parcourir la liste des menus
+				while( list($key, $val) = each( $this->item ) ) {
+					$level = $this->getlevel( $key );
+					
+					$infos = split( "\|", $val . "|||" );
+					for ($j=1; $j<3; $j++) {
+						if (!$infos[j]) $infos[j] = $infos[j-1];
+					}
+
+					if( $level < 3 ){
+						for ($j=1; $j<$level; $j++) {
+							echo "&nbsp;&nbsp;";
+						}
+						echo tag( "A", array( "HREF"=>$infos[0] ) ) . $infos[1];
+						$str = "level=$level, infos[0]=$infos[0], KEY=$key, INFOS[1]=$infos[1], INFOS[2]=$infos[2]";
+						// echo $str;
+						echo "</A><BR>";
+					}
+				}
+				echo "</TABLE>\n";
+				break;
+
+			default :
+				print_error( "menu->draw() - Méthode " 
+						. $this->method
+						. "inconnue" );
+				break;
+		}
+	}
+
+
+	function draw_elem( $iskey, $level, $href, $desc, $more_desc=false )
+	{
+		if (!$href) {
+	   		return "<TR>\n  "
+					. tag( "TD", array(
+						"COLSPAN" => $this->max_level + 1 ))
+					. tag( "hr", array(
+						"width" => "85%",
+						"height" => 2,
+						"align" => "center" ))
+					. "</TD>"
+					. "</TR>\n";
+		}
+
+
+		if (!$more_desc) $more_desc = $desc;
+
+		//	Gestion de l'indentation...
+		$str = "<TR>\n";
+		$im = array( 
+				"ALT" => "",
+				"WIDTH" => $this->width,
+				"HEIGHT" => $this->height,
+				"VALIGN" => "top" );
+		for ($i=1; $i <= $level; $i++) {
+			$img = (($iskey && $i == $level) ? "redarrow.gif" : "noarrow.gif");
+			$im[ "SRC" ] = $this->imgpath . $img;
+			$str .= "  <TD>"
+					. tag( "IMG", $im )
+					. "</TD>\n";
+		}
+
+
+		//	Lien
+		$more_desc = ereg_replace( "'", "\'", $more_desc );
+		$str .= "  " 
+			. tag( "TD", array( 
+				"VALIGN" => "top", 
+				"WIDTH" => "99%",
+				"COLSPAN" => $this->max_level + 1 - $level ));
+		if ($this->font) {
+			$str .= tag( "FONT", $this->font );
+		}
+		$arr = array(
+				"CLASS" => "menu",
+				"OnMouseOver" => "window.status='" . $more_desc . "'; return true;",
+				"OnMouseOut" => "window.status=''; return true;" );
+		if (strpos( $href, "." )) {
+			$arr[ "HREF" ] = $href;
+		}
+		else {
+			$arr[ "HREF" ] = "/index.phtml?PG=" . $href;
+		}
+		$str .= tag( "A", $arr )
+			. $desc
+			. "</A>";
+		if ($this->font) {
+			$str .= tag( "/FONT" );
+		}
+		$str .= "</TD>\n";
+		$str .= "</TR>\n";
+		return $str;
+	}
+
+
+	function gettitle( $page )
+	{
+		reset( $this->item );
+		$this->prev = false;
+		while( list($key, $val) = each($this->item) ) {
+			$ar = explode( "|", $val );
+ 			// if (!strcmp( $page, ereg_replace( "(.*)\?.*", "\\1", $ar[0] ))) {
+			if (!strncmp( $ar[0], $page, strlen( $page )) ) {
+				$this->href = $key;
+				//	Récuperer le suivant
+				list($key, $this->next) = each($this->item);
+				return $ar[1];
+			}
+			$this->prev = $val;
+		}
+		return false;
+	}
+
+
+	function makeit( $items, $parag = "", $level = 1 )
+	{
+		reset( $items );	//	Par sécurité!
+		$this->max_level = max( $this->max_level, $level );
+		if ($parag == "") {
+			$this->item = array();
+		}
+		else
+			$parag .= ".";
+
+		//	Créer le menu...
+		$i = 0;
+		while( list($key, $val) = each($items) ) {
+			if (is_array($val)) {
+				$this->makeit( $val, $parag . $i, $level + 1 );
+			}
+			else {
+				$i++;
+				$this->item[ $parag . $i ] = $val;
+			}
+		}
+
+		return true;
+	}
+
+};
+
+
+	function leftmenu( $arr, $size = 150 )
+	{
+		global $PHP_SELF;
+		$current_page = $PHP_SELF;
+
+		echo tag( "table", array( "width"=>$size, "cellspacing"=>"0", "cellpadding"=>"0", "border"=>"0" ));
+
+		$txt = "";
+		$subitem_prefix = imgtag( "/lib/menu/little_arrow.png" );
+		$must_display = false;
+		$mlevel[0] = "";
+		foreach( $arr as $entry ){
+			list( $item, $url ) = explode( '|', $entry, 2 );
+			$subitem = 0;
+			while( $item[0] == '-' ){
+				$item = substr( $item, 1 );
+				$subitem++;
+			}
+			
+			list( $simple_url ) = explode( "?", $url );
+
+			$onit = !strcmp( $simple_url, $current_page );
+			$txt = "<tr>" . tag( "td", array( "colspan"=>"2", "class"=>"item-left$onit" ));
+			for( $i=0; $i < $subitem; $i++ ){
+				$txt .= "&nbsp;&nbsp;&nbsp;";
+				if( $subitem == $i+1 ) $txt .= "$subitem_prefix&nbsp;";
+			}
+			if( $url && !$onit ){
+				$linked = tag( "a", array( "href"=>"$url", "class"=>"item-left" )) . "$item</a>";
+				$txt .= $linked;
+			}
+			else {
+				$txt .= $item;
+			}
+			$txt .= "</td></tr>\n";
+
+			if( $onit ) {
+				// Display the memorized data
+				for( $i = 0; $i < $subitem; $i++ ) echo $mlevel[$i];
+				$displayed = $subitem + 2;
+				echo $txt;
+				// echo "**DISPLAYED: $displayed<br>";
+			}
+			else {
+				// echo "**TEST: $displayed / $subitem<br>";
+				if( $displayed > 0){
+ 					if( $subitem < $displayed ){
+						echo $txt;
+						$txt = "";
+						$displayed = min( $displayed, $subitem + 1 );
+					}
+				}
+				else {
+					if( $subitem == 0 ){
+						echo $txt;
+					}
+					else {
+						$mlevel[ $subitem-1 ] .= $txt;
+						$mlevel[ $subitem ] = "";
+					}
+				}
+				// echo "**$must_display|$subitem|$url|$item**<br>\n";
+			}
+		}
+		if( $must_display ) {
+			for( $i = 0; $i < 15; $i++ ) echo $mevel[i];
+		}
+
+
+		?>
+  <tr class="left-nav-last">
+    <td width="14"  class="item-left-close"><img alt="" height="1" width="14" src="/lib/menu/spacer.gif" /></td>
+    <td width="136" class="item-left-close"><img height="19" width="136" alt="" src="/lib/menu/left-nav-corner.gif" /></td>
+  </tr>
+  </table><br /><?
+	}
+
+
+?>

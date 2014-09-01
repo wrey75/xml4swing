@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+ 
+<!-- JNLP File for EXPLORER Application -->
+ 
+<jnlp spec="1.0+" codebase="http://xml4swing.sourceforge.net/bin"  href="http://xml4swing.sourceforge.net/bin/explorer.jnlp">
+ 
+   	<information>
+ 		<title>XML4SWING - Explorer</title>
+		<vendor>Sourceforge</vendor>
+     		<homepage href="http://xml4swing.sourceforge.net"/>
+     		<description>Xml4Swing Explorer Test</description>
+     		<icon href="http://a.fsdn.com/con/icons/xm/xml4swing@sf.net/005_spreadsheet_template.png"/>
+	</information>
+ 
+   	<security>
+       		<all-permissions/>
+  	</security> 
+ 
+  	<resources> 
+    		<j2se href="http://java.sun.com/products/autodl/j2se" version="1.4.2+" max-heap-size="128m"/>
+		    <jar href="xml4swing.jar"/>
+   	</resources>
+ 
+   	<application-desc main-class="com.oxande.xmlswing.example.explorer.Explorer">
+  	</application-desc>
+ 
+ </jnlp>
